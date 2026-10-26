@@ -1,0 +1,13 @@
+{
+  "name": "MetaRea World GUIDE",
+  "id": "net.metarea.worldguide.listing",
+  "url": "https://metarea-system.github.io/metarea-world-guide/index.json",
+  "author": {
+    "name": "MetaRea",
+    "url": "https://metarea.net"
+  },
+  "description": "VRChatワールド向け・ワールド紹介ボード",
+  "githubRepos": [
+    "MetaRea-system/metarea-world-guide"
+  ]
+}
