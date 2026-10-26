@@ -2,7 +2,7 @@
   "name": "net.metarea.worldguide",
   "displayName": "MetaRea World GUIDE",
   "version": "0.8.4",
-  "description": "VRChatワールド向け・ワールド紹介ボード。通常版・お気に入り版と8種類の配色プリセットを収録。",
+  "description": "VRChatワールド向けのMetaRea World GUIDE。通常版・お気に入り版、複数ボードのデータ共有、8種類の配色プリセットを収録。",
   "dependencies": {},
   "gitDependencies": {},
   "vpmDependencies": {
@@ -14,6 +14,5 @@
     "url": "https://metarea.net"
   },
   "legacyFolders": {},
-  "legacyFiles": {},
-  "localPath": "C:\\Users\\一生\\Documents\\GitHub\\metarea-world-guide\\Packages\\net.metarea.worldguide"
+  "legacyFiles": {}
 }

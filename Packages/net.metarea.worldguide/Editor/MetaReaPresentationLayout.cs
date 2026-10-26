@@ -37,15 +37,15 @@ public static class MetaReaPresentationLayout
         brand.text = "MetaRea"; heading.text = "WORLD GUIDE";
         foreach (var t in new[] { brand, heading })
         {
-            t.fontSize = 44; t.resizeTextForBestFit = false;
+            t.fontSize = 52; t.resizeTextForBestFit = false;
             t.alignment = TextAnchor.MiddleLeft;
             t.horizontalOverflow = HorizontalWrapMode.Overflow;
             t.verticalOverflow = VerticalWrapMode.Overflow;
         }
         float brandWidth = brand.preferredWidth, headingWidth = heading.preferredWidth;
         float headerX = (800f - brandWidth - headingWidth - 14f) * .5f;
-        Place(brand.rectTransform, headerX, 32, brandWidth + 2, 60);
-        Place(heading.rectTransform, headerX + brandWidth + 14, 32, headingWidth + 2, 60);
+        Place(brand.rectTransform, headerX, 22, brandWidth + 2, 80);
+        Place(heading.rectTransform, headerX + brandWidth + 14, 22, headingWidth + 2, 80);
         foreach (var button in new[] { g.previousPage, g.nextPage })
         {
             var label = button.GetComponentInChildren<Text>(true);

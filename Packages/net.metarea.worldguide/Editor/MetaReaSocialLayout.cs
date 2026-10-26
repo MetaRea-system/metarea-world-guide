@@ -13,7 +13,7 @@ public static class MetaReaSocialLayout
         var texture = AssetDatabase.LoadAssetAtPath<Texture2D>(MetaReaPrototypeBuilder.Root + "/UI/metarea-x-orbit.png");
         if (texture == null) throw new System.InvalidOperationException("MetaRea X icon is missing.");
         var udon = UdonSharpEditorUtility.GetBackingUdonBehaviour(guide);
-        var iconRect = Rect(canvas, "Official X", 708, 16, 76, 76);
+        var iconRect = Rect(canvas, "Official X", 728, 94, 56, 56);
         var icon = iconRect.GetComponent<RawImage>() ?? iconRect.gameObject.AddComponent<RawImage>();
         icon.texture = texture; icon.color = Color.white; icon.raycastTarget = true;
         var open = iconRect.GetComponent<Button>() ?? iconRect.gameObject.AddComponent<Button>();
@@ -60,6 +60,7 @@ public static class MetaReaSocialLayout
         Label(panel, "X help", "URLをブラウザーに入力してご覧ください。", guide.detailTitle.font, 24, 178, 632, 30, 20, guide.secondaryColor);
         guide.xUrlPanel = overlay.gameObject; guide.xUrlField = field;
         iconRect.SetAsLastSibling(); overlay.SetAsLastSibling(); overlay.gameObject.SetActive(false);
+        MetaReaHeaderLayout.Apply(guide);
         UdonSharpEditorUtility.CopyProxyToUdon(guide); EditorUtility.SetDirty(guide);
     }
 

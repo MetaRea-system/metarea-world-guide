@@ -10,6 +10,12 @@ public class MetaReaWallGuideInspector : Editor
     {
         if (UdonSharpEditorUtility.GetBackingUdonBehaviour((MetaReaWallGuide)target) == null)
         { UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target); return; }
+        if (((MetaReaWallGuide)target).isSharedDataSource)
+        {
+            EditorGUILayout.LabelField("MetaRea 共通データ", EditorStyles.boldLabel);
+            EditorGUILayout.HelpBox("各ボードが共有するデータ・画像を管理します。配置したボードから自動設定されます。", MessageType.Info);
+            return;
+        }
         serializedObject.Update();
         EditorGUILayout.LabelField("MetaRea WORLD GUIDE",EditorStyles.boldLabel);
         EditorGUILayout.LabelField("配色プリセット",EditorStyles.boldLabel);
@@ -18,13 +24,23 @@ public class MetaReaWallGuideInspector : Editor
         int preset = MetaReaColorPresets.Match(serializedObject);
         int chosen = EditorGUILayout.Popup("配色", preset, MetaReaColorPresets.Names);
         if (chosen != preset && chosen < 8) MetaReaColorPresets.Apply(serializedObject, chosen);
+        EditorGUILayout.Space();
+        EditorGUILayout.LabelField("タイトルの色", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("brandTitleColor"), new GUIContent("MetaRea"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("guideTitleColor"), new GUIContent("WORLD GUIDE"));
+        EditorGUILayout.LabelField("リンクアイコンの色", EditorStyles.boldLabel);
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("xIconColor"), new GUIContent("X"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("archiveIconUseOriginalColor"), new GUIContent("アーカイブの元の色を使う"));
+        EditorGUI.BeginDisabledGroup(serializedObject.FindProperty("archiveIconUseOriginalColor").boolValue);
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("archiveIconColor"), new GUIContent("ワールドアーカイブ"));
+        EditorGUI.EndDisabledGroup();
         customColors = EditorGUILayout.Foldout(customColors, "色を個別に調整", true);
         if (customColors)
         {
         EditorGUILayout.PropertyField(serializedObject.FindProperty("headingColor"),new GUIContent("見出し・ワールド名"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("bodyColor"),new GUIContent("紹介文"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("secondaryColor"),new GUIContent("作者名・補足・ページ番号"));
-        EditorGUILayout.PropertyField(serializedObject.FindProperty("accentColor"),new GUIContent("ブランド・小見出し・矢印"));
+        EditorGUILayout.PropertyField(serializedObject.FindProperty("accentColor"),new GUIContent("小見出し・矢印"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("buttonTextColor"),new GUIContent("操作ボタンの文字"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("backgroundColor"),new GUIContent("背景の板（画面全体）"));
         EditorGUILayout.PropertyField(serializedObject.FindProperty("cardColor"),new GUIContent("カード・通常ボタンの背景"));

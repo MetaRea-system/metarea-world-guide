@@ -151,6 +151,44 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [UdonSynced] public bool sharedPortalFromDraw;
     [UdonSynced] public string sharedPortalDrawTitle = "";
 
+    // One independent, editor-wired source per scene owns transport and cached textures.
+    [HideInInspector] public bool isSharedDataSource;
+    [HideInInspector] public MetaReaWallGuide sharedDataSource;
+    [HideInInspector] public MetaReaWallGuide[] sharedDisplays;
+    [UdonSynced] public string sharedRecommendedDraw = "";
+    [UdonSynced] public string sharedRandomDraw = "";
+    [UdonSynced] public double sharedRecommendedExpiry;
+    [UdonSynced] public double sharedRandomExpiry;
+    [UdonSynced] public double sharedDrawCooldownEnd;
+    [UdonSynced] public double sharedDrawBusyEnd;
+    [UdonSynced] public int sharedDrawBusyTab = -1;
+    private string[] committedDrawJson = new string[2];
+    private string[] appliedSharedDrawJson = new string[2];
+    private string[] attemptedSharedDrawJson = new string[2];
+    private bool receivingSharedDraw;
+    private bool sharedImageUnavailable;
+    private string sponsorStatusJson = "";
+    private int sponsorStatusVersion;
+    private int appliedSponsorStatusVersion = -1;
+    private IVRCImageDownload[] retiredDrawDownloads = new IVRCImageDownload[4];
+    [HideInInspector] public int feedRequestCount;
+    [HideInInspector] public int drawRequestCount;
+    [HideInInspector] public int statusRequestCount;
+    [HideInInspector] public int imageRequestCount;
+    [HideInInspector] public RawImage xIconImage;
+    [HideInInspector] public RawImage archiveIconImage;
+    public Color xIconColor = new Color(.18f, .73f, .95f, 1f);
+    public bool archiveIconUseOriginalColor = true;
+    [HideInInspector] public Material archiveIconTintMaterial;
+    public Color archiveIconColor = new Color(.88f, .94f, 1f, 1f);
+    public Color brandTitleColor = new Color(.18f, .73f, .95f, 1);
+    public Color guideTitleColor = new Color(.88f, .94f, 1f, 1);
+    [HideInInspector] public RawImage brandTitleImage;
+    [HideInInspector] public RawImage guideTitleImage;
+    [HideInInspector] public string archiveUrl = "https://metarea.net/";
+    [HideInInspector] public GameObject archiveUrlPanel;
+    [HideInInspector] public InputField archiveUrlField;
+
     private string appliedSnapshot = "";
     private string appliedPortalId = "";
     private string[] ids;
@@ -260,7 +298,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int[] cachedCounts = new int[4];
     private int[] cachedPages = new int[4];
     private bool[] cachedTabs = new bool[4];
-    // Fixed segments keep the instance snapshot and both personal draws independent.
+    // Fixed segments keep the instance snapshot and both shared draw categories independent.
     // 0..63: shared snapshot; 64..127: recommended; 128..191: random.
     private bool[] drawHasResult = new bool[2];
     private int[] drawCounts = new int[2];
@@ -290,6 +328,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void Start()
     {
+        if (isSharedDataSource) { SendCustomEventDelayedSeconds(nameof(_Initialize), 1f); return; }
+        if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
         if (reshuffleButton != null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
         if (xUrlPanel != null) xUrlPanel.SetActive(false);
         if (favoritesEnabled && favoritesSettings != null)
@@ -308,10 +348,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public void _Initialize()
     {
+        if (sharedDataSource != null) { PullSharedData(); return; }
         if (!string.IsNullOrEmpty(pinnedSnapshot)) { ApplySnapshot(); return; }
         if (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject))
         {
-            statusLabel.text = "インスタンスの初期データを待っています…";
+            if (statusLabel != null) statusLabel.text = "インスタンスの初期データを待っています…";
             return;
         }
         if (onlineMode) BeginDownload();
@@ -327,6 +368,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void BeginDownload()
     {
+        if (sharedDataSource != null) return;
         if (loading || !string.IsNullOrEmpty(pinnedSnapshot)) return;
         if (Time.realtimeSinceStartup - lastFeedAttempt < 5) return;
         lastFeedAttempt = Time.realtimeSinceStartup;
@@ -335,6 +377,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         loading = true;
         failed = false;
         Render();
+        feedRequestCount++;
         VRCStringDownloader.LoadUrl(feedUrl, (IUdonEventReceiver)this);
     }
 
@@ -384,6 +427,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public void _Retry()
     {
+        if (sharedDataSource != null) { sharedDataSource._Retry(); return; }
+        if (isSharedDataSource) { attemptedSharedDrawJson[0] = ""; attemptedSharedDrawJson[1] = ""; }
         if (!string.IsNullOrEmpty(pinnedSnapshot))
         {
             ApplySnapshot(); imageFailed = false; sponsorImageFailed = false;
@@ -403,12 +448,19 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public override void OnDeserialization()
     {
-        ApplySnapshot();
-        ApplyPortal();
+        if (sharedDataSource == null) ApplySnapshot();
+        if (isSharedDataSource) ReceiveSharedDraw();
+        else ApplyPortal();
     }
 
     public override void OnOwnershipTransferred(VRCPlayerApi player)
     {
+        if (sharedDataSource != null) return;
+        if (isSharedDataSource && player.isLocal)
+        {
+            sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0;
+            RequestSerialization();
+        }
         if (player.isLocal && string.IsNullOrEmpty(pinnedSnapshot))
         { loading = false; SendCustomEventDelayedSeconds(nameof(_Initialize), 1f); }
     }
@@ -619,12 +671,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void BeginSponsorStatusDownload()
     {
+        if (sharedDataSource != null) return;
         if (!onlineMode || !ready || sponsorStatusLoading || Time.realtimeSinceStartup - sponsorStatusStarted < 5f) return;
         if (!sponsorStatusProtocol || (adCount == 0 && placementCount == 0)) return;
         if (sponsorStatusUrl == null || string.IsNullOrEmpty(sponsorStatusUrl.Get())) { FailSponsorStatus(); return; }
         sponsorStatusLoading = true;
         sponsorStatusStarted = Time.realtimeSinceStartup;
         nextSponsorStatusAttempt = sponsorStatusStarted + 285f;
+        statusRequestCount++;
         VRCStringDownloader.LoadUrl(sponsorStatusUrl, (IUdonEventReceiver)this);
     }
 
@@ -682,6 +736,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 placementAllowed[i] = true; placementStarts[i] = Number(item, "startsAtUnix"); placementEnds[i] = Number(item, "endsAtUnix");
             }
         }
+        sponsorStatusJson = json; sponsorStatusVersion++;
         sponsorStatusUtc = generated; sponsorStatusReceived = Time.realtimeSinceStartup;
         sponsorStatusValid = true; sponsorStatusLoading = false; sponsorStatusFailed = false;
         nextSponsorStatusAttempt = Time.realtimeSinceStartup + 285f;
@@ -831,6 +886,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         for (int slot = 0; slot < 4; slot++)
         {
             bool needed = slot == 0 ? extraSponsorPages > 0 : view == 3 && IsAdActive(openedAd) && adDetailCells[openedAd] >= 0 && slot == adDetailCells[openedAd] / 4 + 1;
+            if (isSharedDataSource && slot > 0 && sharedDisplays != null)
+                for (int d = 0; d < sharedDisplays.Length; d++)
+                {
+                    var display = sharedDisplays[d];
+                    if (display == null || !display.gameObject.activeInHierarchy || display.view != 3) continue;
+                    int ad = display.openedAd;
+                    if (IsAdActive(ad) && adDetailCells[ad] >= 0 && slot == adDetailCells[ad] / 4 + 1) needed = true;
+                }
             if (!needed || extraSponsorFailed[slot] || extraSponsorLoading[slot] || extraSponsorTextures[slot] != null || Time.realtimeSinceStartup - extraSponsorAttempts[slot] < 5f) continue;
             var url = ExtraSponsorUrl(slot);
             if (url == null || string.IsNullOrEmpty(url.Get())) { extraSponsorFailed[slot] = true; continue; }
@@ -884,10 +947,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private void MarkImageRequest()
-    { imageRequestInFlight = true; imageRequestStarted = Time.realtimeSinceStartup; nextImageRequestAt = imageRequestStarted + 5.1f; }
+    { imageRequestCount++; imageRequestInFlight = true; imageRequestStarted = Time.realtimeSinceStartup; nextImageRequestAt = imageRequestStarted + 5.1f; }
 
     private void PumpImageDownloads()
     {
+        if (sharedDataSource != null) return;
         if (!onlineMode || !ready || imageRequestInFlight || drawVerifying || Time.realtimeSinceStartup < nextImageRequestAt) return;
         // Do not flood VRChat's random-order queue. First show the banner/QR atlas.
         BeginSponsorImageDownload(); if (imageRequestInFlight) return;
@@ -1010,6 +1074,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void RequestDraw(int targetTab, bool initial)
     {
+        if (sharedDataSource != null) { if (!initial) sharedDataSource._RequestSharedDraw(targetTab); return; }
+        if (isSharedDataSource && Networking.LocalPlayer != null && !Networking.IsOwner(gameObject)) return;
         if (!onlineMode || !ready || (targetTab != 1 && targetTab != 3) || pendingDrawTab >= 0 || (!initial && Time.realtimeSinceStartup < drawCooldownUntil)) return;
         int slot = targetTab == 1 ? 0 : 1;
         initialDrawAttempted[slot] = true;
@@ -1020,6 +1086,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         drawStartedAt = Time.realtimeSinceStartup; if (!initial) drawCooldownUntil = drawStartedAt + 30f;
         drawLoadingMetadata = true; drawImageRequested = false; drawVerifying = false; drawReadyToCommit = false;
         drawErrors[slot] = "";
+        receivingSharedDraw = false; sharedImageUnavailable = false;
+        if (isSharedDataSource)
+        {
+            sharedDrawBusyTab = targetTab; sharedDrawBusyEnd = TimeNow() + 90;
+            if (!initial) sharedDrawCooldownEnd = TimeNow() + 30;
+            RequestSerialization();
+        }
+        drawRequestCount++;
         VRCStringDownloader.LoadUrl(url, (IUdonEventReceiver)this);
         Render();
     }
@@ -1109,6 +1183,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void FailDraw(string message)
     {
         if (pendingDrawTab < 0) return;
+        if (isSharedDataSource && receivingSharedDraw && !string.IsNullOrEmpty(pendingDrawJson))
+        {
+            if (pendingDrawDownload != null) pendingDrawDownload.Dispose();
+            pendingDrawDownload = null; pendingDrawTexture = null;
+            imageRequestInFlight = false; drawVerifying = false; drawLoadingMetadata = false;
+            sharedImageUnavailable = true; drawReadyToCommit = true; TryCommitDraw(); return;
+        }
+        if (isSharedDataSource && !receivingSharedDraw && (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)))
+        {
+            sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0;
+            sharedDrawCooldownEnd = TimeNow() + 5; RequestSerialization();
+        }
         drawErrors[pendingDrawTab == 1 ? 0 : 1] = message;
         if (drawImageRequested && !drawVerifying && !drawReadyToCommit) imageRequestInFlight = false;
         if (pendingDrawDownload != null) { pendingDrawDownload.Dispose(); pendingDrawDownload = null; }
@@ -1122,6 +1208,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (!drawReadyToCommit || pendingDrawTab < 0) return;
         int slot = pendingDrawTab == 1 ? 0 : 1; int start = 64 + slot * 64;
+        // Leave room for the remaining synchronized fields and serialization overhead.
+        if (isSharedDataSource && !receivingSharedDraw && Utf8Bytes(pinnedSnapshot) + Utf8Bytes(pendingDrawJson) + Utf8Bytes(slot == 0 ? sharedRandomDraw : sharedRecommendedDraw) > 240000)
+        { FailDraw("抽選結果が同期できるサイズを超えました。前回の結果を表示します"); return; }
         // Keep a detail page the visitor is reading unchanged until they leave it.
         if ((view == 2 || (view == 3 && beforeAdView == 2)) && selected >= start && selected < start + 64) return;
         DataToken token;
@@ -1145,20 +1234,35 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         drawTotalCandidates[slot] = Integer(d, "totalCandidates", worlds.Count);
         cachedTabs[pendingDrawTab] = false; cachedPages[pendingDrawTab] = 0;
         if (tab == pendingDrawTab) { page = 0; BuildOrder(); }
+        committedDrawJson[slot] = pendingDrawJson;
+        if (isSharedDataSource && !receivingSharedDraw)
+        {
+            double expiry = TimeNow() + Mathf.Max(0, drawLeaseUntil - Time.realtimeSinceStartup);
+            if (slot == 0) { sharedRecommendedDraw = pendingDrawJson; sharedRecommendedExpiry = expiry; }
+            else { sharedRandomDraw = pendingDrawJson; sharedRandomExpiry = expiry; }
+            sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0; RequestSerialization();
+        }
+        if (sharedImageUnavailable) drawErrors[slot] = "画像の有効時間を過ぎたため、一覧情報のみ表示しています";
+        receivingSharedDraw = false; sharedImageUnavailable = false;
         pendingDrawTab = -1; pendingDrawAtlas = -1; pendingDrawJson = "";
         drawReadyToCommit = false; drawImageRequested = false;
         Render();
-        if (previous != null) previous.Dispose();
+        if (previous != null)
+        {
+            if (isSharedDataSource) RetireDraw(previous);
+            else previous.Dispose();
+        }
     }
 
     private void UpdateDrawUi()
     {
-        if (!onlineMode || favoriteTabSelected || (tab != 1 && tab != 3)) return;
+        if (isSharedDataSource || !onlineMode || favoriteTabSelected || (tab != 1 && tab != 3)) return;
         int slot = tab == 1 ? 0 : 1;
         int wait = Mathf.Max(0, Mathf.CeilToInt(drawCooldownUntil - Time.realtimeSinceStartup));
-        reshuffleButton.interactable = ready && pendingDrawTab < 0 && wait == 0;
+        bool busy = sharedDataSource != null ? sharedDataSource.SharedDrawBusy() : pendingDrawTab >= 0;
+        reshuffleButton.interactable = ready && !busy && wait == 0;
         if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
-        if (reshuffleLabel != null) reshuffleLabel.text = pendingDrawTab >= 0 ? "抽選中…" : wait > 0 ? "あと " + wait + " 秒" : string.IsNullOrEmpty(drawErrors[slot]) ? "再抽選" : "再試行";
+        if (reshuffleLabel != null) reshuffleLabel.text = busy ? "抽選中…" : wait > 0 ? "あと " + wait + " 秒" : string.IsNullOrEmpty(drawErrors[slot]) ? "再抽選" : "再試行";
         if (pendingDrawTab == tab)
             statusLabel.text = drawReadyToCommit ? "抽選が完了しました。一覧に戻ると切り替わります" : drawLoadingMetadata ? "サイトの全候補から抽選しています…" : "抽選した64件までの写真を読み込んでいます…";
         else if (!string.IsNullOrEmpty(drawErrors[slot])) statusLabel.text = drawErrors[slot];
@@ -1205,8 +1309,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         Render();
     }
     public void _Top() { SetTab(0); }
+    public void _ToggleArchive()
+    {
+        if (archiveUrlPanel == null) return;
+        if (archiveUrlField != null) archiveUrlField.text = archiveUrl;
+        if (xUrlPanel != null) xUrlPanel.SetActive(false);
+        archiveUrlPanel.SetActive(!archiveUrlPanel.activeSelf);
+    }
+    public void _CloseArchive() { if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false); }
     public void _ToggleX()
     {
+        if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
         if (xUrlPanel == null) return;
         if (xUrlField != null) xUrlField.text = xProfileUrl;
         xUrlPanel.SetActive(!xUrlPanel.activeSelf);
@@ -1426,10 +1539,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             { sharedPortalWorldId = ""; RequestSerialization(); }
             if (!string.IsNullOrEmpty(appliedPortalId)) ApplyPortal();
         }
-        UpdateSponsorFade();
+        if (sharedDataSource == null) UpdateSponsorFade();
         if (Time.time < nextUiTick) return;
         nextUiTick = Time.time + 0.2f;
-        if (ready && onlineMode)
+        if (sharedDataSource == null)
+        {
+            if (loading && Time.realtimeSinceStartup - lastFeedAttempt > 60f) { loading = false; failed = true; Render(); }
+            if (pendingDrawTab >= 0 && !drawReadyToCommit && Time.realtimeSinceStartup - drawStartedAt > 90f)
+                FailDraw("抽選の読み込みがタイムアウトしました。再試行できます");
+        }
+        if (sharedDataSource != null) PullSharedData();
+        if (isSharedDataSource) { ReceiveSharedDraw(); ReleaseUnusedDraws(); }
+        if (ready && onlineMode && sharedDataSource == null)
         {
             if (imageRequestInFlight && Time.realtimeSinceStartup - imageRequestStarted > 60f)
             {
@@ -1444,22 +1565,24 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             TryCommitDraw();
             if (pendingDrawTab < 0)
             {
-                if (!initialDrawAttempted[0]) RequestDraw(1, true);
-                else if (!initialDrawAttempted[1]) RequestDraw(3, true);
+                if (!initialDrawAttempted[0] && string.IsNullOrEmpty(sharedRecommendedDraw)) RequestDraw(1, true);
+                else if (!initialDrawAttempted[1] && string.IsNullOrEmpty(sharedRandomDraw)) RequestDraw(3, true);
             }
             bool wasLoadingImage = imageRequestInFlight;
             PumpImageDownloads();
             if (wasLoadingImage != imageRequestInFlight) Render();
             UpdateDrawUi();
         }
-        if (ready && onlineMode && sponsorStatusProtocol && (adCount > 0 || placementCount > 0))
+        if (sharedDataSource == null && ready && onlineMode && sponsorStatusProtocol && (adCount > 0 || placementCount > 0))
         {
             bool failedNow = (sponsorStatusLoading && Time.realtimeSinceStartup - sponsorStatusStarted >= 15f) || (sponsorStatusValid && !StatusUsable());
             if (failedNow) FailSponsorStatus();
             if (Time.realtimeSinceStartup >= nextSponsorStatusAttempt) BeginSponsorStatusDownload();
             if (RefreshSponsorAvailability() || failedNow) Render();
         }
-        if (ready && view != 3 && Time.time >= nextSponsorRotation) BeginSponsorFade();
+        if (sharedDataSource == null && ready && view != 3 && Time.time >= nextSponsorRotation) BeginSponsorFade();
+        if (isSharedDataSource) return;
+        UpdateDrawUi();
         RenderFavorites();
         int wait = Mathf.CeilToInt(PortalWait());
         portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
@@ -1470,6 +1593,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void Render()
     {
+        if (isSharedDataSource) return;
         topPanel.SetActive(view == 0); listPanel.SetActive(view == 1); detailPanel.SetActive(view == 2); adPanel.SetActive(view == 3);
         for (int i = 0; i < navImages.Length; i++) navImages[i].color = i == (favoriteTabSelected ? 4 : tab) ? selectedTabColor : cardColor;
         retryButton.gameObject.SetActive((!ready && !loading) || (ready && ((imageFailed && !imageLoading) || (sponsorImageFailed && !sponsorImageLoading) || sponsorStatusFailed || ExtraSponsorImagesFailed())));
@@ -1553,9 +1677,24 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public void _ApplyAppearance()
     {
+        if (xIconImage != null) xIconImage.color = xIconColor;
+        if (archiveIconImage != null) { archiveIconImage.material = archiveIconUseOriginalColor ? null : archiveIconTintMaterial; archiveIconImage.color = archiveIconUseOriginalColor ? Color.white : archiveIconColor; }
         TintTexts(headingTexts, headingColor); TintTexts(bodyTexts, bodyColor);
         TintTexts(secondaryTexts, secondaryColor); TintTexts(accentTexts, accentColor);
         TintTexts(buttonTexts, buttonTextColor);
+        if (brandTitleImage != null) brandTitleImage.color = brandTitleColor;
+        if (guideTitleImage != null) guideTitleImage.color = guideTitleColor;
+        if (archiveUrlPanel != null)
+        {
+            var archiveCard = archiveUrlPanel.transform.Find("Card");
+            archiveCard.GetComponent<Image>().color = backgroundColor;
+            archiveCard.GetComponent<Outline>().effectColor = borderColor;
+            archiveCard.Find("X heading").GetComponent<Text>().color = headingColor;
+            archiveCard.Find("X help").GetComponent<Text>().color = secondaryColor;
+            archiveCard.Find("Close").GetComponent<Image>().color = cardColor;
+            archiveCard.Find("Close/Label").GetComponent<Text>().color = buttonTextColor;
+            if (archiveUrlField != null) { archiveUrlField.GetComponent<Image>().color = cardColor; archiveUrlField.textComponent.color = bodyColor; }
+        }
         if (backgroundImage != null) backgroundImage.color = backgroundColor;
         if (cardImages != null) for (int i = 0; i < cardImages.Length; i++) if (cardImages[i] != null) cardImages[i].color = cardColor;
         if (portalImages != null) for (int i = 0; i < portalImages.Length; i++) if (portalImages[i] != null) portalImages[i].color = portalColor;
@@ -1652,7 +1791,168 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sponsorUrlField != null) { sponsorUrlField.gameObject.SetActive(true); sponsorUrlField.text = adUrls[a]; }
         adPortalButton.gameObject.SetActive(false);
     }
+
+    private int Utf8Bytes(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        int bytes = 0;
+        for (int i = 0; i < text.Length; i++)
+        {
+            int c = text[i];
+            if (c < 128) bytes++;
+            else if (c < 2048) bytes += 2;
+            else if (c >= 55296 && c <= 56319 && i + 1 < text.Length && text[i + 1] >= 56320 && text[i + 1] <= 57343) { bytes += 4; i++; }
+            else bytes += 3;
+        }
+        return bytes;
+    }
+
+    private float SharedRemaining(double deadline)
+    {
+        if (deadline == 0) return 0;
+        double remaining = Networking.LocalPlayer == null ? deadline - TimeNow() : Networking.CalculateServerDeltaTime(deadline, TimeNow());
+        if (remaining > 2147483.648d) remaining -= 4294967.296d;
+        else if (remaining < -2147483.648d) remaining += 4294967.296d;
+        return remaining > 0 && remaining <= 600 ? (float)remaining : 0;
+    }
+
+    public bool SharedDrawBusy()
+    { return pendingDrawTab >= 0 || (sharedDrawBusyTab >= 0 && SharedRemaining(sharedDrawBusyEnd) > 0); }
+
+    public void _RequestSharedDraw(int targetTab)
+    {
+        if (!isSharedDataSource || (targetTab != 1 && targetTab != 3) || SharedDrawBusy() || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _SharedDrawOnOwner(targetTab);
+        else SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(_SharedDrawOnOwner), targetTab);
+    }
+
+    [NetworkCallable(maxEventsPerSecond: 1)]
+    public void _SharedDrawOnOwner(int targetTab)
+    {
+        if (!isSharedDataSource || (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject))) return;
+        if (!ready || (targetTab != 1 && targetTab != 3) || SharedDrawBusy() || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        RequestDraw(targetTab, false);
+    }
+
+    // The small verified result is synchronized. Each client downloads a leased atlas
+    // at most once; an expired/reused atlas is never displayed for a different result.
+    private void ReceiveSharedDraw()
+    {
+        if (!isSharedDataSource || !ready || pendingDrawTab >= 0) return;
+        for (int slot = 0; slot < 2; slot++)
+        {
+            string json = slot == 0 ? sharedRecommendedDraw : sharedRandomDraw;
+            if (string.IsNullOrEmpty(json) || json == committedDrawJson[slot] || json == attemptedSharedDrawJson[slot]) continue;
+            attemptedSharedDrawJson[slot] = json;
+            pendingDrawTab = slot == 0 ? 1 : 3;
+            drawStartedAt = Time.realtimeSinceStartup;
+            pendingDrawAtlas = -1; pendingDrawJson = ""; pendingDrawGeneration = "";
+            receivingSharedDraw = true; sharedImageUnavailable = false;
+            drawLoadingMetadata = false; drawImageRequested = false; drawVerifying = false; drawReadyToCommit = false;
+            pendingDrawTexture = null; pendingDrawDownload = null;
+            if (!ValidateDraw(json)) { FailDraw("共有された抽選結果を確認できませんでした"); receivingSharedDraw = false; return; }
+            pendingDrawJson = json;
+            drawLeaseUntil = Time.realtimeSinceStartup + SharedRemaining(slot == 0 ? sharedRecommendedExpiry : sharedRandomExpiry);
+            initialDrawAttempted[slot] = true;
+            if (pendingDrawAtlas < 0 || drawLeaseUntil <= Time.realtimeSinceStartup + 5)
+            {
+                sharedImageUnavailable = pendingDrawAtlas >= 0;
+                pendingDrawAtlas = -1; drawReadyToCommit = true; TryCommitDraw();
+            }
+            else PumpImageDownloads();
+            return;
+        }
+    }
+
+    // Display-local arrays keep a detail page stable while a newer result waits.
+    // Textures alone are shared; downloads and Dispose remain the source's responsibility.
+    private void PullSharedData()
+    {
+        var source = sharedDataSource;
+        if (source == null || !source.isSharedDataSource) return;
+        if (!source.ready)
+        {
+            loading = source.loading; failed = source.failed; Render(); return;
+        }
+        bool changed = false;
+        if (appliedSnapshot != source.pinnedSnapshot)
+        {
+            if (string.IsNullOrEmpty(source.pinnedSnapshot) || !Parse(source.pinnedSnapshot)) return;
+            appliedSnapshot = source.pinnedSnapshot;
+            changed = true;
+        }
+        loading = source.loading; failed = source.failed;
+        if (atlasTexture != source.atlasTexture || sponsorTexture != source.sponsorTexture || imageLoading != source.imageLoading || imageFailed != source.imageFailed || sponsorImageFailed != source.sponsorImageFailed) changed = true;
+        atlasTexture = source.atlasTexture; sponsorTexture = source.sponsorTexture;
+        imageLoading = source.imageLoading; imageFailed = source.imageFailed;
+        sponsorImageLoading = source.sponsorImageLoading; sponsorImageFailed = source.sponsorImageFailed;
+        for (int i = 0; i < 4; i++)
+        {
+            if (extraSponsorTextures[i] != source.extraSponsorTextures[i] || extraSponsorLoading[i] != source.extraSponsorLoading[i] || extraSponsorFailed[i] != source.extraSponsorFailed[i]) changed = true;
+            extraSponsorTextures[i] = source.extraSponsorTextures[i];
+            extraSponsorLoading[i] = source.extraSponsorLoading[i]; extraSponsorFailed[i] = source.extraSponsorFailed[i];
+        }
+        if (appliedSponsorStatusVersion != source.sponsorStatusVersion)
+        {
+            if (!string.IsNullOrEmpty(source.sponsorStatusJson)) ApplySponsorStatus(source.sponsorStatusJson);
+            appliedSponsorStatusVersion = source.sponsorStatusVersion;
+            changed = true;
+        }
+        if (sponsorStatusValid != source.sponsorStatusValid) changed = true;
+        sponsorStatusValid = source.sponsorStatusValid; sponsorStatusLoading = source.sponsorStatusLoading; sponsorStatusFailed = source.sponsorStatusFailed;
+        sponsorStatusUtc = source.sponsorStatusUtc; sponsorStatusReceived = source.sponsorStatusReceived;
+        if (RefreshSponsorAvailability()) changed = true;
+        if (currentAd != source.currentAd || sponsorLeft != source.sponsorLeft || sponsorRight != source.sponsorRight) changed = true;
+        currentAd = source.currentAd; sponsorLeft = source.sponsorLeft; sponsorRight = source.sponsorRight;
+        drawCooldownUntil = Time.realtimeSinceStartup + source.SharedRemaining(source.sharedDrawCooldownEnd);
+        for (int slot = 0; slot < 2; slot++)
+        {
+            string json = source.committedDrawJson[slot];
+            if (string.IsNullOrEmpty(json)) continue;
+            if (appliedSharedDrawJson[slot] != json)
+            {
+                int start = 64 + slot * 64;
+                if ((view == 2 || (view == 3 && beforeAdView == 2)) && selected >= start && selected < start + 64) continue;
+                pendingDrawTab = slot == 0 ? 1 : 3;
+                pendingDrawJson = json; pendingDrawTexture = source.drawTextures[slot]; pendingDrawDownload = null;
+                drawReadyToCommit = true; TryCommitDraw();
+                appliedSharedDrawJson[slot] = json; changed = true;
+            }
+            if (drawTextures[slot] != source.drawTextures[slot]) { drawTextures[slot] = source.drawTextures[slot]; changed = true; }
+            drawErrors[slot] = source.drawErrors[slot];
+        }
+        if (changed) Render();
+    }
+
+    private void RetireDraw(IVRCImageDownload download)
+    {
+        ReleaseUnusedDraws();
+        for (int i = 0; i < retiredDrawDownloads.Length; i++)
+        {
+            if (retiredDrawDownloads[i] != null) continue;
+            retiredDrawDownloads[i] = download; return;
+        }
+        var expanded = new IVRCImageDownload[retiredDrawDownloads.Length + 4];
+        for (int i = 0; i < retiredDrawDownloads.Length; i++) expanded[i] = retiredDrawDownloads[i];
+        expanded[retiredDrawDownloads.Length] = download; retiredDrawDownloads = expanded;
+    }
+
+    private void ReleaseUnusedDraws()
+    {
+        for (int i = 0; i < retiredDrawDownloads.Length; i++)
+        {
+            var download = retiredDrawDownloads[i];
+            if (download == null) continue;
+            var texture = download.Result;
+            bool used = false;
+            if (sharedDisplays != null) for (int j = 0; j < sharedDisplays.Length; j++)
+            {
+                var display = sharedDisplays[j];
+                if (display == null) continue;
+                if (display.drawTextures[0] == texture || display.drawTextures[1] == texture) used = true;
+            }
+            if (!used) { download.Dispose(); retiredDrawDownloads[i] = null; }
+        }
+    }
+
 }
-
-
-
