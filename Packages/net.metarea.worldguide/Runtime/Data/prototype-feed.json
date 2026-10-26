@@ -1,0 +1,79 @@
+{
+  "dailyChill": "wrld_3739e47a-c1eb-42eb-a7a6-350094ef9fa4",
+  "dailyTwo": "wrld_f35d5a81-ef30-4b36-a85f-b9984f2c75e8",
+  "ad": {
+    "worldId": "wrld_00a05c7f-5e2d-431b-9d63-792b3b71af2a",
+    "description": "MetaRea WORLD ARCHIVE\nワールドとの新しい出会いを。\nこの広告は操作確認用のサンプルです。",
+    "title": "次に行く世界を、ここから。",
+    "sponsor": "MetaRea / 試作バナー"
+  },
+  "worlds": [
+    {
+      "recommended": false,
+      "name": "Apocalypse˸ Eclipse",
+      "description": "玄関を出たら世界が終わっているワールド\n黒い大きな球体と建物が砂に埋まっている\n謎の迫力とスピード感が良い",
+      "pc": true,
+      "id": "wrld_2a85f784-587e-4d9b-be23-e0cd02f71dd0",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "【公式】仮想空間＜ツクヨミ＞【超かぐや姫！】",
+      "description": "超かぐや姫！の月見ヤチヨに会えるワールド\n操作のチュートリアルとミニゲームもできる\nヤチヨとツーショットを撮れる",
+      "pc": true,
+      "id": "wrld_2dfd7562-8127-4091-856b-f34a2947b22b",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "Nothing",
+      "description": "不思議な造形の部屋があるワールド\nアイボリー色の場所に芸術的な部屋が何個かある\nなんとも奇妙で不思議な場所である",
+      "pc": true,
+      "id": "wrld_f35d5a81-ef30-4b36-a85f-b9984f2c75e8",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "東阪高速 御開雫インターチェンジ",
+      "description": "高速道路のインターチェンジ前のワールド\nとてもリアル調で、車が向こうから来ると怖い\n歩行禁止のこの場所を歩けるのはVRならでは",
+      "pc": true,
+      "id": "wrld_5daa9c62-d0de-494c-9599-d93a0718db5a",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "Unfinished Journey ⁄ 끝나지 않은 여정",
+      "description": "廃ビル群の中にある屋上のワールド\n鳥居の奥の社を触ると、違う景色になる\n雨上がりの光景も綺麗",
+      "pc": true,
+      "id": "wrld_92655a6b-364c-4757-8cbf-0f58bfbfa6d5",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "The Asterium",
+      "description": "終末世界の大橋と戦車のワールド\n綺麗だが切ない景観で、空には何かが飛んできている\n手記を見ると何が起こったか分かるようだ",
+      "pc": true,
+      "id": "wrld_00a05c7f-5e2d-431b-9d63-792b3b71af2a",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "White Complex 深層の複合施設",
+      "description": "白と水と空が見えるリミナルワールド\n色々な映えるデザインの部屋が沢山ある\n収集要素が有るので、部屋を巡っていこう",
+      "pc": true,
+      "id": "wrld_1234e12c-deb4-47ef-aeba-b1702e9eb56f",
+      "android": false
+    },
+    {
+      "recommended": false,
+      "name": "無為の庭-Still Garden",
+      "description": "橋を渡ると四季が変わるワールド\n季節が変わると、風景が細部まで変化する\nネコちゃんの様子も変化して凄くかわいい",
+      "pc": true,
+      "id": "wrld_3739e47a-c1eb-42eb-a7a6-350094ef9fa4",
+      "android": true
+    }
+  ],
+  "revision": "prototype-001 / 固定データ・日替わり選出は仮",
+  "schema": "metarea-wall-v1",
+  "dailyOne": "wrld_2a85f784-587e-4d9b-be23-e0cd02f71dd0"
+}

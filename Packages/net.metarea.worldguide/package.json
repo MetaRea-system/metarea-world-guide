@@ -1,0 +1,19 @@
+{
+  "name": "net.metarea.worldguide",
+  "displayName": "MetaRea World GUIDE",
+  "version": "0.8.2",
+  "description": "Describe this Package",
+  "dependencies": {},
+  "gitDependencies": {},
+  "vpmDependencies": {
+    "com.vrchat.worlds": "3.10.5"
+  },
+  "author": {
+    "name": "MetaRea",
+    "email": "metametareal@gmail.com",
+    "url": "https://metarea.net"
+  },
+  "legacyFolders": {},
+  "legacyFiles": {},
+  "localPath": "C:\\Users\\一生\\Documents\\GitHub\\metarea-world-guide\\Packages\\net.metarea.worldguide"
+}
