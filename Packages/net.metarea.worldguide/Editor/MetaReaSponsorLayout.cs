@@ -17,7 +17,7 @@ public static class MetaReaSponsorLayout
         var udon = UdonSharpEditorUtility.GetBackingUdonBehaviour(g);
         var panel = Rect(g.topPanel.transform,"Sponsored worlds",0,585,760,270);
         g.sponsoredWorldPanel = panel.gameObject;
-        Label(panel,"Heading","SPONSORED WORLDS / スポンサーワールド",0,0,760,32,21,muted);
+        Label(panel,"Heading","SPONSORED / スポンサー広告",0,0,760,32,21,muted);
         g.sponsoredWorldButtons = new Button[2]; g.sponsoredWorldPictures = new RawImage[2]; g.sponsoredWorldTitles = new Text[2];
         g.sponsorWorldFades = new CanvasGroup[2];
         for(int i=0;i<2;i++)

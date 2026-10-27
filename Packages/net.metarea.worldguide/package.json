@@ -1,7 +1,7 @@
 {
   "name": "net.metarea.worldguide",
   "displayName": "MetaRea World GUIDE",
-  "version": "0.8.4",
+  "version": "0.8.5",
   "description": "VRChatワールド向けのMetaRea World GUIDE。通常版・お気に入り版、複数ボードのデータ共有、8種類の配色プリセットを収録。",
   "dependencies": {},
   "gitDependencies": {},

@@ -286,6 +286,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int sponsorLeft = -1;
     private int sponsorRight = -1;
     private bool sponsoredDetail;
+    private bool topPlacementProtocol;
+    private int topCount;
+    private string[] topIds, topKeys, topAdTitles;
+    private int[] topTypes, topWorlds, topAds;
+    private double[] topStarts, topEnds;
+    private bool[] topAllowed, topActive;
+    private int openedTop = -1;
     private float nextSponsorRotation;
     private int sponsorFadeStage;
     private float sponsorFadeStarted;
@@ -627,10 +634,51 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 placementCount++;
             }
         }
+        ReadTopPlacements(d);
         adOrder = new int[adCount];
         adCursor = 0; sponsorCursor = 0;
         AdvanceSponsors();
     }
+
+    private void ReadTopPlacements(DataDictionary d)
+    {
+        topCount = 0; openedTop = -1;
+        topIds = new string[10]; topKeys = new string[10]; topAdTitles = new string[10];
+        topTypes = new int[10]; topWorlds = new int[10]; topAds = new int[10];
+        topStarts = new double[10]; topEnds = new double[10]; topAllowed = new bool[10]; topActive = new bool[10];
+        DataToken token;
+        topPlacementProtocol = d.TryGetValue("topPlacements", out token);
+        if (!topPlacementProtocol || token.TokenType != TokenType.DataList || !sponsorStatusProtocol) return;
+        DataList list = token.DataList;
+        for (int i = 0; i < list.Count && topCount < 10; i++)
+        {
+            if (list[i].TokenType != TokenType.DataDictionary) continue;
+            DataDictionary p = list[i].DataDictionary;
+            string type = Str(p, "type"); int kind = type == "world" ? 0 : type == "image" ? 1 : type == "image_world" ? 2 : -1;
+            string id = Str(p, "id");
+            if (kind < 0 || string.IsNullOrEmpty(id) || Str(p, "contentKey").Length != 64 || !ValidPeriod(p)) continue;
+            bool duplicate = false; for (int j = 0; j < topCount; j++) if (topIds[j] == id) duplicate = true;
+            if (duplicate) continue;
+            int world = FindId(Str(p, "worldId")), ad = -1;
+            for (int j = 0; j < adCount; j++) if (adIds[j] == Str(p, "adId")) ad = j;
+            if ((kind != 1 && world < 0) || (kind != 0 && ad < 0)) continue;
+            topIds[topCount] = id; topKeys[topCount] = Str(p, "contentKey"); topTypes[topCount] = kind;
+            topWorlds[topCount] = world; topAds[topCount] = ad;
+            topAdTitles[topCount] = Str(p, "title");
+            if (string.IsNullOrEmpty(topAdTitles[topCount])) topAdTitles[topCount] = kind == 0 ? titles[world] : adNames[ad];
+            topStarts[topCount] = Number(p, "startsAtUnix"); topEnds[topCount] = Number(p, "endsAtUnix");
+            topCount++;
+        }
+    }
+
+    private bool IsTopActive(int index)
+    {
+        if (index < 0 || index >= topCount || !StatusUsable() || !topAllowed[index] || !InPeriod(topStarts[index], topEnds[index])) return false;
+        return topTypes[index] == 0 || IsAdActive(topAds[index]);
+    }
+
+    private bool TopPortalAvailable()
+    { return topPlacementProtocol && IsTopActive(openedTop) && topTypes[openedTop] == 2 && topAds[openedTop] == openedAd && CanUseWorld(topWorlds[openedTop]); }
 
     private double Number(DataDictionary d, string key)
     {
@@ -661,6 +709,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool IsSponsoredWorldActive(int world)
     {
         if (world < 0 || !StatusUsable()) return false;
+        for (int i = 0; i < topCount; i++)
+            if (topTypes[i] != 1 && topWorlds[i] == world && IsTopActive(i)) return true;
         for (int i = 0; i < placementCount; i++)
             if (placementWorlds[i] == world && placementAllowed[i] && InPeriod(placementStarts[i], placementEnds[i])) return true;
         return false;
@@ -673,7 +723,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (sharedDataSource != null) return;
         if (!onlineMode || !ready || sponsorStatusLoading || Time.realtimeSinceStartup - sponsorStatusStarted < 5f) return;
-        if (!sponsorStatusProtocol || (adCount == 0 && placementCount == 0)) return;
+        if (!sponsorStatusProtocol || (adCount == 0 && placementCount == 0 && topCount == 0)) return;
         if (sponsorStatusUrl == null || string.IsNullOrEmpty(sponsorStatusUrl.Get())) { FailSponsorStatus(); return; }
         sponsorStatusLoading = true;
         sponsorStatusStarted = Time.realtimeSinceStartup;
@@ -716,6 +766,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!d.TryGetValue("ads", TokenType.DataList, out adsToken) || !d.TryGetValue("sponsoredWorlds", TokenType.DataList, out worldsToken)) return false;
         DataList ads = adsToken.DataList; DataList worlds = worldsToken.DataList;
         if (!ValidStatusList(ads) || !ValidStatusList(worlds)) return false;
+        DataList tops = new DataList();
+        if (topPlacementProtocol)
+        {
+            DataToken topToken;
+            if (!d.TryGetValue("topPlacements", TokenType.DataList, out topToken) || !ValidStatusList(topToken.DataList)) return false;
+            tops = topToken.DataList;
+        }
         for (int i = 0; i < adCount; i++)
         {
             adAllowed[i] = false;
@@ -736,6 +793,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 placementAllowed[i] = true; placementStarts[i] = Number(item, "startsAtUnix"); placementEnds[i] = Number(item, "endsAtUnix");
             }
         }
+        for (int i = 0; i < topCount; i++)
+        {
+            topAllowed[i] = false;
+            for (int j = 0; j < tops.Count; j++)
+            {
+                DataDictionary item = tops[j].DataDictionary;
+                if (Str(item, "id") != topIds[i] || Str(item, "contentKey") != topKeys[i]) continue;
+                topAllowed[i] = true; topStarts[i] = Number(item, "startsAtUnix"); topEnds[i] = Number(item, "endsAtUnix");
+            }
+        }
         sponsorStatusJson = json; sponsorStatusVersion++;
         sponsorStatusUtc = generated; sponsorStatusReceived = Time.realtimeSinceStartup;
         sponsorStatusValid = true; sponsorStatusLoading = false; sponsorStatusFailed = false;
@@ -747,6 +814,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool RefreshSponsorAvailability()
     {
         bool changed = false;
+        for (int i = 0; i < topCount; i++)
+        {
+            bool active = IsTopActive(i);
+            if (topActive[i] != active) { topActive[i] = active; changed = true; }
+        }
         for (int i = 0; i < adCount; i++)
         {
             bool active = IsAdActive(i);
@@ -763,7 +835,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             activeAdCount = 0;
             for (int i = 0; i < adCount; i++) if (adActive[i]) adOrder[activeAdCount++] = i;
             sponsoredCount = 0;
-            for (int i = 0; i < placementCount; i++)
+            if (topPlacementProtocol)
+            {
+                for (int i = 0; i < topCount; i++) if (topActive[i]) sponsoredWorlds[sponsoredCount++] = i;
+            }
+            else for (int i = 0; i < placementCount; i++)
             {
                 if (!placementActive[i]) continue;
                 int world = placementWorlds[i]; bool duplicate = false;
@@ -773,7 +849,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             for (int i = 0; i < sponsoredCount; i++) sponsorOrder[i] = sponsoredWorlds[i];
             ShuffleAds(); ShuffleSponsorWorlds(); adCursor = 0; sponsorCursor = 0; AdvanceSponsors();
         }
-        if (view == 3 && !IsAdActive(openedAd)) { view = beforeAdView == 3 ? 0 : beforeAdView; openedAd = -1; changed = true; }
+        if (view == 3 && (!IsAdActive(openedAd) || (openedTop >= 0 && !IsTopActive(openedTop)))) { view = beforeAdView == 3 ? 0 : beforeAdView; openedAd = -1; openedTop = -1; changed = true; }
         if (view == 2 && sponsoredDetail && !IsSponsoredWorldActive(selected))
         { view = tab == 0 ? 0 : 1; sponsoredDetail = false; changed = true; }
         int portal = sharedPortalFromDraw ? -1 : FindId(sharedPortalWorldId);
@@ -861,7 +937,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _SponsoredWorld0() { OpenSponsored(sponsorLeft); }
     public void _SponsoredWorld1() { OpenSponsored(sponsorRight); }
     private void OpenSponsored(int world)
-    { if (!ready || !IsSponsoredWorldActive(world)) return; CancelSponsorFade(); selected = world; sponsoredDetail = true; view = 2; Render(); }
+    {
+        if (!ready) return;
+        if (topPlacementProtocol)
+        {
+            if (!IsTopActive(world)) return;
+            if (topTypes[world] == 0) { RequestPortal(topWorlds[world]); return; }
+            CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; PumpImageDownloads(); Render(); return;
+        }
+        if (!IsSponsoredWorldActive(world)) return;
+        RequestPortal(world);
+    }
     private int SponsoredPosition()
     { for (int i = 0; i < sponsoredCount; i++) if (sponsoredWorlds[i] == selected) return i; return -1; }
 
@@ -1339,7 +1425,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _Row3() { Open(rowMap[3]); }
     private void Open(int i) { if (!ready || !CanUseWorld(i) || sponsorOnly[i]) return; selected = i; sponsoredDetail = false; view = 2; Render(); }
     public void _Back() { view = tab == 0 ? 0 : 1; TryCommitDraw(); Render(); }
-    public void _Ad() { if (onlineMode && !IsAdActive(currentAd)) return; CancelSponsorFade(); if (view != 3) beforeAdView = view; openedAd = currentAd; view = 3; PumpImageDownloads(); Render(); }
+    public void _Ad() { if (onlineMode && !IsAdActive(currentAd)) return; CancelSponsorFade(); if (view != 3) beforeAdView = view; openedTop = -1; openedAd = currentAd; view = 3; PumpImageDownloads(); Render(); }
     public void _AdBack() { view = beforeAdView == 3 ? 0 : beforeAdView; nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds); Render(); }
     private int Position()
     { for (int i = 0; i < orderCount; i++) if (order[i] == selected) return i; return -1; }
@@ -1349,7 +1435,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     { if (sponsoredDetail) { int s = SponsoredPosition(); if (s >= 0 && s + 1 < sponsoredCount) OpenSponsored(sponsoredWorlds[s + 1]); } else if (tab == 0) Open(secondSlotIsChill ? dailyChill : dailyTwo); else { int p = Position(); if (p >= 0 && p + 1 < orderCount) Open(order[p + 1]); } }
 
     public void _Portal() { if (!sponsoredDetail || IsSponsoredWorldActive(selected)) RequestPortal(selected); }
-    public void _AdPortal() { if (!onlineMode) RequestPortal(adWorld); }
+    public void _AdPortal() { if (!onlineMode) RequestPortal(adWorld); else if (view == 3 && TopPortalAvailable()) RequestPortal(topWorlds[openedTop]); }
     private double TimeNow()
     { return Networking.LocalPlayer == null ? Time.timeAsDouble : Networking.GetServerTimeInSeconds(); }
     private float PortalWait()
@@ -1573,7 +1659,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (wasLoadingImage != imageRequestInFlight) Render();
             UpdateDrawUi();
         }
-        if (sharedDataSource == null && ready && onlineMode && sponsorStatusProtocol && (adCount > 0 || placementCount > 0))
+        if (sharedDataSource == null && ready && onlineMode && sponsorStatusProtocol && (adCount > 0 || placementCount > 0 || topCount > 0))
         {
             bool failedNow = (sponsorStatusLoading && Time.realtimeSinceStartup - sponsorStatusStarted >= 15f) || (sponsorStatusValid && !StatusUsable());
             if (failedNow) FailSponsorStatus();
@@ -1586,7 +1672,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         RenderFavorites();
         int wait = Mathf.CeilToInt(PortalWait());
         portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
-        adPortalButton.interactable = !onlineMode && ready && adWorld >= 0 && wait == 0;
+        adPortalButton.interactable = ready && wait == 0 && (onlineMode ? view == 3 && TopPortalAvailable() : adWorld >= 0);
         portalButtonLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL\nこの世界へ";
         adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL  この世界へ";
     }
@@ -1747,10 +1833,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void SponsorDetail(int ad)
     {
+        bool premium = TopPortalAvailable();
+        float detailHeight = premium ? 566f : 641.25f;
         int cell = adDetailCells[ad];
         if (cell >= 0 && cell < 10 && extraSponsorTextures[1 + cell / 4] != null)
         {
-            Place(adPicture.rectTransform, 0, 58, 760, 641.25f);
+            float detailWidth = detailHeight * 1024f / 864f;
+            Place(adPicture.rectTransform, (760f - detailWidth) * .5f, 58, detailWidth, detailHeight);
             adPicture.texture = extraSponsorTextures[1 + cell / 4]; adPicture.color = Color.white;
             int local = cell % 4;
             adPicture.uvRect = new Rect((local % 2) * .5f + .5f / 2048f, (1 - local / 2) * .5f + .5f / 1728f, .5f - 1f / 2048f, .5f - 1f / 1728f);
@@ -1759,7 +1848,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         // Old feeds and a failed detail download keep the correct banner visible.
         SponsorBanner(adPicture, ad);
         float width = bannerAtlasV2 ? 760f : 760f / 6f;
-        Place(adPicture.rectTransform, (760f - width) * .5f, 58 + (641.25f - 760f / 6f) * .5f, width, 760f / 6f);
+        Place(adPicture.rectTransform, (760f - width) * .5f, 58 + (detailHeight - 760f / 6f) * .5f, width, 760f / 6f);
     }
 
     private void RenderSponsors()
@@ -1770,7 +1859,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             {
                 int world = s == 0 ? sponsorLeft : sponsorRight;
                 sponsoredWorldButtons[s].gameObject.SetActive(world >= 0);
-                if (world >= 0) { sponsoredWorldTitles[s].text = titles[world]; SetPhoto(sponsoredWorldPictures[s], world); }
+                if (world >= 0)
+                {
+                    RawImage photo = sponsoredWorldPictures[s];
+                    if (topPlacementProtocol)
+                    {
+                        sponsoredWorldButtons[s].interactable = IsTopActive(world);
+                        sponsoredWorldTitles[s].text = topAdTitles[world];
+                        if (topTypes[world] == 0) { Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,topWorlds[world]); }
+                        else { Place(photo.rectTransform,8,8+(133f-356f/6f)*.5f,356,356f/6f); SponsorBanner(photo,topAds[world]); }
+                    }
+                    else { sponsoredWorldTitles[s].text = titles[world]; Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,world); }
+                }
             }
         }
         if (sponsorBannerButton != null) { sponsorBannerButton.gameObject.SetActive(!onlineMode || activeAdCount > 0); sponsorBannerButton.interactable = !onlineMode || IsAdActive(currentAd); }
@@ -1787,9 +1887,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         bannerTitle.text = adNames[currentAd]; SponsorBanner(bannerPicture, currentAd);
         adTitle.text = adNames[a]; adDescription.text = adDescriptions[a]; adSponsor.text = "広告主: " + adSponsors[a];
         SponsorDetail(a);
+        bool premium = view == 3 && TopPortalAvailable();
+        float linkY = premium ? 635f : 710f;
+        if (sponsorQrPicture != null) Place(sponsorQrPicture.rectTransform,664,linkY,96,96);
+        if (sponsorUrlField != null) Place((RectTransform)sponsorUrlField.transform,0,linkY,650,96);
+        if (sponsorLinkHelp != null) Place(sponsorLinkHelp.rectTransform,10,linkY+66,630,25);
+        Place((RectTransform)adPortalButton.transform,130,746,500,62);
         if (sponsorQrPicture != null) { sponsorQrPicture.gameObject.SetActive(true); SponsorQr(a); }
         if (sponsorUrlField != null) { sponsorUrlField.gameObject.SetActive(true); sponsorUrlField.text = adUrls[a]; }
-        adPortalButton.gameObject.SetActive(false);
+        adPortalButton.gameObject.SetActive(premium);
     }
 
     private int Utf8Bytes(string text)
