@@ -53,6 +53,14 @@ jobs:
           echo "unityPackage=${{ vars.PACKAGE_NAME }}-${{ steps.version.outputs.value }}.unitypackage" >> $GITHUB_ENV
           echo "version=${{ steps.version.outputs.value }}" >> $GITHUB_ENV
 
+      - name: Reject scene files in the distributable package
+        working-directory: "${{ env.packagePath }}"
+        shell: bash
+        run: |
+          if find . -type f -iname '*.unity' -print -quit | grep -q .; then
+            echo "Scene files must not be included in the MetaRea package."
+            exit 1
+          fi
       # Zip the Package for release
       - name: Create Package Zip
         working-directory: "${{ env.packagePath }}"

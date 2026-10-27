@@ -9,7 +9,8 @@ using UnityEngine;
 [InitializeOnLoad]
 public static class MetaReaAssetsEntry
 {
-    public const string Folder = "Assets/MetaRea World GUIDE";
+    public const string Folder = "Assets/MetaRea_World_GUIDE";
+    const string LegacyFolder = "Assets/MetaRea World GUIDE";
     public const string PrefabPath = Folder + "/MetaRea World GUIDE.prefab";
     public const string SourcePath = "Packages/net.metarea.worldguide/Runtime/MetaRea World GUIDE.prefab";
     static bool queued;
@@ -43,14 +44,64 @@ public static class MetaReaAssetsEntry
         EditorGUIUtility.PingObject(asset);
     }
 
+    static void MoveAsset(string from, string to)
+    {
+        string error = AssetDatabase.MoveAsset(from, to);
+        if (!string.IsNullOrEmpty(error)) throw new IOException(error);
+    }
+
+    static void MigrateEntry()
+    {
+        if (!AssetDatabase.IsValidFolder(LegacyFolder)) return;
+        if (!AssetDatabase.IsValidFolder(Folder))
+        {
+            MoveAsset(LegacyFolder, Folder);
+            return;
+        }
+        // Move instead of copying, preserving the GUID and all user overrides.
+        // Other user files are retained in the same unified folder.
+        foreach (string path in Directory.GetFileSystemEntries(LegacyFolder))
+        {
+            string from = path.Replace((char)92, (char)47);
+            if (from.EndsWith(".meta", StringComparison.OrdinalIgnoreCase)) continue;
+            string target = Folder + "/" + Path.GetFileName(from);
+            if (File.Exists(target) || Directory.Exists(target))
+                target = AssetDatabase.GenerateUniqueAssetPath(target);
+            MoveAsset(from, target);
+        }
+        if (Directory.GetFileSystemEntries(LegacyFolder).Length == 0)
+            AssetDatabase.DeleteAsset(LegacyFolder);
+    }
+
+    static void EnsureDocumentation()
+    {
+        if (!AssetDatabase.IsValidFolder(Folder))
+            AssetDatabase.CreateFolder("Assets", "MetaRea_World_GUIDE");
+        string docs = Folder + "/Documentation";
+        if (!AssetDatabase.IsValidFolder(docs))
+            AssetDatabase.CreateFolder(Folder, "Documentation");
+        CopyDocument("Packages/net.metarea.worldguide/Runtime/README.txt", Folder + "/README.txt");
+        CopyDocument("Packages/net.metarea.worldguide/Runtime/Documentation/スポンサー広告サンプル.txt",
+            docs + "/スポンサー広告サンプル.txt");
+    }
+
+    static void CopyDocument(string source, string destination)
+    {
+        // Keep existing user edits. No .meta is copied from the package.
+        if (File.Exists(destination) || !File.Exists(source)) return;
+        File.Copy(source, destination);
+        AssetDatabase.ImportAsset(destination);
+    }
     public static bool EnsureEntry(bool revealCreated)
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return false;
+        MigrateEntry();
+        EnsureDocumentation();
         // Never overwrite a user's existing prefab, including its GUID/overrides.
         if (File.Exists(PrefabPath)) return false;
         var source = AssetDatabase.LoadAssetAtPath<GameObject>(SourcePath);
         if (source == null) return false;
-        if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "MetaRea World GUIDE");
+        if (!AssetDatabase.IsValidFolder(Folder)) AssetDatabase.CreateFolder("Assets", "MetaRea_World_GUIDE");
         var preview = EditorSceneManager.NewPreviewScene();
         try
         {

@@ -26,7 +26,7 @@ public static class MetaReaPrototypeBuilder
     static Color Panel = new Color(.022f,.064f,.11f);
     static Color Cyan = new Color(.18f,.73f,.95f);
 
-    [MenuItem("MetaRea/試作品を新しいシーンに組み立てる")]
+    // Developer utility only; scene generation is not exposed in the install menu.
     public static void Create()
     {
         if (EditorApplication.isPlaying) throw new Exception("Stop Play mode first.");

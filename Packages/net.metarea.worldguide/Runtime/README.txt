@@ -1,9 +1,9 @@
-MetaRea World GUIDE — 開発版
+MetaRea World GUIDE
 
 導入
 VCCのMetaReaリポジトリからパッケージを追加します。
 確認環境：Unity 2022.3.22f1 / Worlds SDK 3.10.5。
-導入後、Assets/MetaRea World GUIDE フォルダーが自動作成されます。
+導入後、Assets/MetaRea_World_GUIDE フォルダーが自動作成されます。
 その直下の MetaRea World GUIDE.prefab をHierarchyへドラッグして配置します。
 PackagesやRuntimeを開く必要はありません。MetaReaメニューの「導入用プレハブを表示」からも選択できます。
 Assets側は配布元を継承するプレハブです。更新時に既存の設定やGUIDを上書きしません。
@@ -76,3 +76,11 @@ detail-v2: 2016×1701、672×567区画を3列×3段、9広告/ページ、最大
 旧banner-v2/detail-v1の配信は旧配置で読み込みます。サーバー未更新時の旧形式応答にも対応します。新形式は別snapshot番号で保存し、旧番号の画像は置換しません。
 反映にはGUIDE更新後のワールド再ビルドとArchiveパッチ36が必要です。元アップロード画像は保持します。
 
+
+導入フォルダ構成（0.8.8以降）
+Assets/MetaRea_World_GUIDE/
+  MetaRea World GUIDE.prefab
+  README.txt
+  Documentation/スポンサー広告サンプル.txt
+Sceneファイルは配布・作成しません。旧名のAssetsフォルダはGUIDを保持して統合します。
+内部アセットとスクリプトはVCC管理のPackages/net.metarea.worldguideにあります。
