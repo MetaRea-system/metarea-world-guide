@@ -54,6 +54,7 @@ public static class MetaReaUnifiedLayout
         g.cardImages = g.cardImages.Where(t => t != null).ToArray();
         g.borderOutlines = g.GetComponentsInChildren<Outline>(true);
         g.favoritesEnabled = keepFavorites;
+        MetaReaCompactLayout.Apply(g);
         Preview(g);
         if (g.xUrlPanel != null) g.xUrlPanel.transform.SetAsLastSibling();
         if (g.archiveUrlPanel != null) g.archiveUrlPanel.transform.SetAsLastSibling();

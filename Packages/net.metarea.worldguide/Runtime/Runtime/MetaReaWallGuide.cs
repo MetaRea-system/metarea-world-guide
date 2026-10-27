@@ -401,9 +401,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             int w = manyWorlds[k]; bool valid = ready && w >= 0;
             bool compact = ready && sponsoredCount > 0;
-            float height = compact ? 255f : 388f;
+            float height = compact ? 255f : 387f;
             float photoHeight = compact ? 133f : 200f;
-            Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 401), 372, height);
+            Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
             Place(manyCaptions[k].rectTransform, 10, photoHeight + 18, 352, 28);
             Place(manyTitles[k].rectTransform, 10, photoHeight + 49, 352, compact ? 46 : 80);
@@ -530,6 +530,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool[] topAllowed, topActive;
     private int openedTop = -1;
     private float nextSponsorRotation;
+    private bool sponsorRotationReady;
     private int sponsorFadeStage;
     private float sponsorFadeStarted;
     private double lastImageAttempt = -999;
@@ -1176,7 +1177,54 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             }
         }
         else { sponsorLeft = -1; sponsorRight = -1; }
+        sponsorRotationReady = false;
         nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds);
+    }
+
+    private bool BannerImageSettled(int ad)
+    {
+        if (ad < 0 || ad >= adCount || adCells[ad] < 0) return true;
+        if (adBannerPages[ad] == 0) return sponsorTexture != null || sponsorImageFailed;
+        return extraSponsorTextures[0] != null || extraSponsorFailed[0];
+    }
+
+    private bool TopImageSettled(int index)
+    {
+        if (index < 0) return true;
+        if (!topPlacementProtocol) return atlasTexture != null || imageFailed;
+        if (index >= topCount) return true;
+        int cell = topImageIndices[index];
+        if (cell >= 0)
+        {
+            int slot = 5 + cell / 8;
+            return extraSponsorTextures[slot] != null || extraSponsorFailed[slot];
+        }
+        if (topTypes[index] == 0) return atlasTexture != null || imageFailed;
+        return BannerImageSettled(topAds[index]);
+    }
+
+    private bool SponsorImagesSettled()
+    {
+        // A terminal image failure must not freeze every other advertisement.
+        return !onlineMode || (BannerImageSettled(currentAd) && TopImageSettled(sponsorLeft) && TopImageSettled(sponsorRight));
+    }
+
+    private void UpdateSponsorRotation()
+    {
+        if (sponsorFadeStage != 0) return;
+        if (!SponsorImagesSettled())
+        {
+            sponsorRotationReady = false;
+            return;
+        }
+        if (!sponsorRotationReady)
+        {
+            // Start a full display interval only after this selection has images.
+            sponsorRotationReady = true;
+            nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds);
+            return;
+        }
+        if (Time.time >= nextSponsorRotation) BeginSponsorFade();
     }
 
     private int PickWeightedTop(int exclude)
@@ -2143,7 +2191,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (Time.realtimeSinceStartup >= nextSponsorStatusAttempt) BeginSponsorStatusDownload();
             if (RefreshSponsorAvailability() || failedNow) Render();
         }
-        if (sharedDataSource == null && ready && view != 3 && Time.time >= nextSponsorRotation) BeginSponsorFade();
+        if (sharedDataSource == null && ready && view != 3) UpdateSponsorRotation();
         PumpAdClicks(); PumpStatistics();
         if (isSharedDataSource) return;
         UpdateLoadingIndicators();
@@ -2244,7 +2292,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sponsoredWorldPanel != null) sponsoredWorldPanel.SetActive(compact);
         for (int i = 0; i < 2; i++)
         {
-            Place((RectTransform)topButtons[i].transform, 0, compact ? 44 + i * 267 : 44 + i * 401, 760, compact ? 255 : 388);
+            Place((RectTransform)topButtons[i].transform, 0, compact ? 44 + i * 267 : 44 + i * 391, 760, compact ? 255 : 387);
             Place(topPictures[i].rectTransform, compact ? 8 : 6, compact ? 8 : 6, compact ? 310 : 748, compact ? 174 : 218);
             Place(topCaptions[i].rectTransform, compact ? 333 : 20, compact ? 15 : 231, compact ? 410 : 720, compact ? 55 : 32);
             Place(topTitles[i].rectTransform, compact ? 333 : 20, compact ? 80 : 268, compact ? 410 : 704, compact ? 62 : 34);
@@ -2312,7 +2360,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         // TOP cards already have a 356-wide image area; do not expand them to
         // the 760-wide footer/detail coordinates.
         if (footer || image == adPicture)
-            Place(image.rectTransform, (760f - width) / 2f, footer ? 0 : 58, width, 760f / 6f);
+            Place(image.rectTransform, (760f - width) / 2f, footer ? 0 : 23, width, 760f / 6f);
         if (!bannerAtlasV2) { SponsorPhoto(image, adCells[ad]); return; }
         image.texture = adCells[ad] >= 0 ? (adBannerPages[ad] == 0 ? sponsorTexture : extraSponsorTextures[0]) : null;
         image.color = image.texture == null ? new Color(.04f, .12f, .19f, 1) : Color.white;
@@ -2350,7 +2398,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (cell >= 0 && cell < 16 && extraSponsorTextures[1 + cell / detailCellsPerPage] != null)
         {
             float detailWidth = detailHeight * 1024f / 864f;
-            Place(adPicture.rectTransform, (760f - detailWidth) * .5f, 58, detailWidth, detailHeight);
+            Place(adPicture.rectTransform, (760f - detailWidth) * .5f, 23, detailWidth, detailHeight);
             adPicture.texture = extraSponsorTextures[1 + cell / detailCellsPerPage]; adPicture.color = Color.white;
             int local = cell % detailCellsPerPage;
             if (detailAtlasV2)
@@ -2359,7 +2407,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         float placeholderWidth = detailHeight * 1024f / 864f;
-        Place(adPicture.rectTransform, (760f - placeholderWidth) * .5f, 58, placeholderWidth, detailHeight);
+        Place(adPicture.rectTransform, (760f - placeholderWidth) * .5f, 23, placeholderWidth, detailHeight);
         SetPlaceholder(adPicture, cell < 0 || cell >= 16 ? 1 : extraSponsorFailed[1 + cell / detailCellsPerPage] ? 2 : 0);
     }
 
@@ -2409,11 +2457,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         adTitle.text = adNames[a]; adDescription.text = adDescriptions[a]; adSponsor.text = "広告主: " + adSponsors[a];
         SponsorDetail(a);
         bool premium = view == 3 && TopPortalAvailable();
-        float linkY = premium ? 635f : 710f;
+        float linkY = premium ? 600f : 675f;
         if (sponsorQrPicture != null) Place(sponsorQrPicture.rectTransform,664,linkY,96,96);
         if (sponsorUrlField != null) Place((RectTransform)sponsorUrlField.transform,0,linkY,650,96);
         if (sponsorLinkHelp != null) Place(sponsorLinkHelp.rectTransform,10,linkY+66,630,25);
-        Place((RectTransform)adPortalButton.transform,130,746,500,62);
+        Place((RectTransform)adPortalButton.transform,130,711,500,62);
         if (sponsorQrPicture != null) { sponsorQrPicture.gameObject.SetActive(true); SponsorQr(a); }
         if (sponsorUrlField != null) { sponsorUrlField.gameObject.SetActive(true); sponsorUrlField.text = adUrls[a]; }
         adPortalButton.gameObject.SetActive(premium);

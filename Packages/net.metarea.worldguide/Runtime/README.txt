@@ -3,9 +3,12 @@ MetaRea World GUIDE — 開発版
 導入
 VCCのMetaReaリポジトリからパッケージを追加します。
 確認環境：Unity 2022.3.22f1 / Worlds SDK 3.10.5。
-Packages/MetaRea World GUIDE/Runtime 内のPrefabをシーンへ配置します。
+導入後、Assets/MetaRea World GUIDE フォルダーが自動作成されます。
+その直下の MetaRea World GUIDE.prefab をHierarchyへドラッグして配置します。
+PackagesやRuntimeを開く必要はありません。MetaReaメニューの「導入用プレハブを表示」からも選択できます。
+Assets側は配布元を継承するプレハブです。更新時に既存の設定やGUIDを上書きしません。
 ・MetaRea World GUIDE：2枠／4枠とお気に入りの有無を設定できる統合版
-お気に入りボタンは既存のナビゲーション行にあります。画面寸法は800×1350です。
+お気に入りボタンは既存のナビゲーション行にあります。画面寸法は800×1295です。広告まわりの余白を詰めています。
 表示形式はUnityのInspectorで設定します。ワールド内に標準・4枠の切り替えボタンはありません。
 配布プレハブは統合版のみです。表示形式（2枠／4枠）とお気に入り（有り／無し）は独立して設定できます。お気に入り無しではボタンを隠し、残り4ボタンを均等に配置します。
 
