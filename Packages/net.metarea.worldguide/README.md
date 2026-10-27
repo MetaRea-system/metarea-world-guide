@@ -89,3 +89,6 @@ Assets/MetaRea_World_GUIDE/
   Documentation/スポンサー広告サンプル.txt
 Sceneファイルは配布・作成しません。旧名のAssetsフォルダはGUIDを保持して統合します。
 内部アセットとスクリプトはVCC管理のPackages/net.metarea.worldguideにあります。
+
+TOP広告カード（0.8.9以降）
+画像の大きさを保ち、カードの下端を32px延長しました。広告名は最大3行で折り返し表示します。長さに応じて20～24pxの範囲で文字サイズを調整します。

@@ -18,16 +18,32 @@ public static class MetaReaCompactLayout
         if (frame != null) { frame.localPosition = new Vector3(0, .774f - 55f * .000925f / 2, .015f); frame.localScale = new Vector3(.777f, 1.286f - 55f * .000925f, .035f); }
         var trim = g.transform.Find("Top cyan trim");
         if (trim != null) trim.localPosition = new Vector3(0, 1.416f - 55f * .000925f, -.008f);
-        Place(g.topPanel.transform.parent, 20, 267, 760, ContentHeight);
+        Place(g.topPanel.transform.parent, 20, 267, 760, 840);
         foreach (var panel in new[] { g.topPanel, g.listPanel, g.detailPanel, g.adPanel, g.favoritesPanel })
             if (panel != null) Place(panel.transform, 0, 0, 760, ContentHeight);
 
         if (g.sponsoredWorldPanel != null)
         {
-            Place(g.sponsoredWorldPanel.transform, 0, 570, 760, 238);
+            Place(g.topPanel.transform, 0, 0, 760, 840);
+            Place(g.sponsoredWorldPanel.transform, 0, 570, 760, 270);
             Disclosure(g.sponsoredWorldPanel.transform.Find("Heading"), 0, 0);
             for (int i = 0; i < g.sponsoredWorldButtons.Length; i++)
-                Place(g.sponsoredWorldButtons[i].transform, i * 388, 18, 372, 220);
+            {
+                var card = g.sponsoredWorldButtons[i].transform;
+                Place(card, i * 388, 18, 372, 252);
+                var title = g.sponsoredWorldTitles[i];
+                Place(title.transform, 10, 150, 352, 92);
+                title.resizeTextForBestFit = true;
+                title.resizeTextMinSize = 20;
+                title.resizeTextMaxSize = 24;
+                title.horizontalOverflow = HorizontalWrapMode.Wrap;
+                title.verticalOverflow = VerticalWrapMode.Truncate;
+                var gold = card.Find("Gold frame");
+                Place(gold, 0, 0, 372, 252);
+                if (gold != null) for (int edge = 0; edge < 4; edge++)
+                    Place(gold.Find("Edge " + edge), edge == 3 ? 369 : 0,
+                        edge == 1 ? 249 : 0, edge < 2 ? 372 : 3, edge < 2 ? 3 : 252);
+            }
         }
         Place(canvas.transform.Find("Ad divider"), 0, 1113, 800, 2);
         Disclosure(g.sponsorDisclosure != null ? g.sponsorDisclosure.transform : null, 20, 1115);
