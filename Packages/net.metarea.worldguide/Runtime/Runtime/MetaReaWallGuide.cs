@@ -18,6 +18,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [Header("設置者の設定")]
     [Tooltip("OFF: 通常ランダム①＋② / ON: 通常①＋チル")]
     public bool secondSlotIsChill;
+    [HideInInspector] public bool unifiedDisplay;
+    [HideInInspector] public int initialDisplayMode;
     [Min(1f)] public float portalCooldownSeconds = 5f;
     public Transform portalAnchor;
     public VRCPortalMarker portalMarker;
@@ -34,6 +36,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public VRCUrl[] sponsorAtlasUrls;
     public VRCUrl[] sponsorExtraAtlasUrls;
     public VRCUrl[] sponsorDetailAtlasUrls;
+    public VRCUrl[] sponsorTopAtlasUrls;
+    public Image[] sponsorGoldFrames;
     [Header("サイト全件からの抽選")]
     public VRCUrl recommendedDrawUrl = new VRCUrl("https://metarea.net/api/udon/draw/recommended");
     public VRCUrl randomDrawUrl = new VRCUrl("https://metarea.net/api/udon/draw/random");
@@ -64,6 +68,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int favoriteCount;
 
     public Texture[] samplePictures;
+    [HideInInspector] public Texture loadingPicture;
+    [HideInInspector] public Texture unavailablePicture;
+    [HideInInspector] public Texture failedPicture;
+    [HideInInspector] public RawImage[] loadingTargets;
+    [HideInInspector] public Text[] loadingIndicators;
     public Texture sampleAdBanner;
     public Texture sampleAdDetail;
     public string[] pictureWorldIds;
@@ -172,6 +181,154 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int appliedSponsorStatusVersion = -1;
     private IVRCImageDownload[] retiredDrawDownloads = new IVRCImageDownload[4];
     [HideInInspector] public int feedRequestCount;
+    public bool anonymousStatistics = true;
+    [HideInInspector] public VRCUrl[] statisticsUrls;
+    private bool[] statisticsPending = new bool[7];
+    private bool[] statisticsSeen = new bool[7];
+    private float[] statisticsQueuedAt = new float[7];
+    private float nextStatisticsSend = 60f;
+    private int statisticsSent;
+
+    [HideInInspector] public VRCUrl[] clickUrls;
+    private int[] adClickSlots, topClickSlots;
+    private bool[] adClickAllowed, topClickAllowed, adPortalEnabled;
+    private int[] clickQueueSlots, clickQueueOrigins;
+    private string[] clickQueueIds, clickQueueKeys;
+    private float[] clickQueueTimes, clickLastTimes;
+    private string[] clickLastAdIds;
+    private int clickHead, clickCount, clickSent;
+    private float nextClickSend, clickRequestStarted;
+    private string clickRequestUrl = "";
+
+    private int ClickEntity(string id, string key, int slot, int origin)
+    {
+        if (slot < 0 || slot >= 4096 || (origin != 0 && origin != 1)) return -1;
+        int count = origin == 0 ? topCount : adCount;
+        for (int i = 0; i < count; i++)
+        {
+            if (origin == 0)
+            { if (topIds[i] == id && topKeys[i] == key && topClickSlots[i] == slot && topClickAllowed[i] && IsTopActive(i)) return i; }
+            else if (adIds[i] == id && adKeys[i] == key && adClickSlots[i] == slot && adClickAllowed[i] && adShowInBanner[i] && IsAdActive(i)) return i;
+        }
+        return -1;
+    }
+
+    private void QueueAdClick(string id, string key, int slot, int origin)
+    {
+        if (!onlineMode || !anonymousStatistics) return;
+        if (sharedDataSource != null && sharedDataSource != this) { sharedDataSource.QueueAdClick(id, key, slot, origin); return; }
+        if (clickUrls == null || clickUrls.Length != 8192 || clickSent >= 128 || clickCount >= 32) return;
+        int entity = ClickEntity(id, key, slot, origin); if (entity < 0) return;
+        int ad = origin == 0 ? topAds[entity] : entity;
+        if (origin == 0 && (topTypes[entity] == 0 || (topTypes[entity] == 2 && !CanUseWorld(topWorlds[entity])))) return;
+        if (!CanRecordAdDetail(ad)) return;
+        string advertisementId = adIds[ad];
+        if (clickQueueSlots == null)
+        {
+            clickQueueSlots = new int[32]; clickQueueOrigins = new int[32];
+            clickQueueIds = new string[32]; clickQueueKeys = new string[32]; clickQueueTimes = new float[32];
+            clickLastTimes = new float[128]; clickLastAdIds = new string[128];
+        }
+        // One detail view per advertisement in 30 minutes, across surfaces,
+        // boards, slot changes and content revisions. No personal identifier.
+        int debounce = -1;
+        for (int i = 0; i < clickLastAdIds.Length; i++)
+        {
+            bool expired = string.IsNullOrEmpty(clickLastAdIds[i]) || Time.realtimeSinceStartup - clickLastTimes[i] >= 1800f;
+            if (clickLastAdIds[i] == advertisementId && !expired) return;
+            if (debounce < 0 && expired) debounce = i;
+        }
+        if (debounce < 0) return;
+        clickLastAdIds[debounce] = advertisementId; clickLastTimes[debounce] = Time.realtimeSinceStartup;
+        int tail = (clickHead + clickCount) % 32;
+        clickQueueSlots[tail] = slot; clickQueueOrigins[tail] = origin;
+        clickQueueIds[tail] = id; clickQueueKeys[tail] = key; clickQueueTimes[tail] = Time.realtimeSinceStartup;
+        clickCount++;
+    }
+
+    private bool CanRecordAdDetail(int ad)
+    { return IsAdActive(ad) && adDetailCells[ad] >= 0 && adDetailCells[ad] < 16 && (!adPortalEnabled[ad] || CanUseWorld(adWorlds[ad])); }
+
+    private int TakeAdClick()
+    {
+        if (!onlineMode || !anonymousStatistics) { clickCount = 0; return -1; }
+        if (sharedDataSource != null || clickSent >= 128 || clickUrls == null || clickUrls.Length != 8192) return -1;
+        if (!string.IsNullOrEmpty(clickRequestUrl))
+        { if (Time.realtimeSinceStartup - clickRequestStarted < 20f) return -1; clickRequestUrl = ""; }
+        if (Time.realtimeSinceStartup < nextClickSend || loading || sponsorStatusLoading || pendingDrawTab >= 0 || imageRequestInFlight || InitialImagesPending()) return -1;
+        if (Time.realtimeSinceStartup - lastFeedAttempt < 6f || Time.realtimeSinceStartup - sponsorStatusStarted < 6f || Time.realtimeSinceStartup - drawStartedAt < 6f) return -1;
+        while (clickCount > 0)
+        {
+            int at = clickHead; clickHead = (clickHead + 1) % 32; clickCount--;
+            if (Time.realtimeSinceStartup - clickQueueTimes[at] > 120f || ClickEntity(clickQueueIds[at], clickQueueKeys[at], clickQueueSlots[at], clickQueueOrigins[at]) < 0) continue;
+            int index = clickQueueSlots[at] * 2 + clickQueueOrigins[at];
+            if (clickUrls[index] == null || string.IsNullOrEmpty(clickUrls[index].Get())) continue;
+            clickSent++; nextClickSend = Time.realtimeSinceStartup + 5.1f;
+            nextStatisticsSend = Mathf.Max(nextStatisticsSend, nextClickSend);
+            return index;
+        }
+        return -1;
+    }
+
+    private void PumpAdClicks()
+    {
+        if (Networking.LocalPlayer == null) return;
+        int index = TakeAdClick(); if (index < 0) return;
+        clickRequestUrl = clickUrls[index].Get(); clickRequestStarted = Time.realtimeSinceStartup;
+        VRCStringDownloader.LoadUrl(clickUrls[index], (IUdonEventReceiver)this);
+    }
+
+    private bool IsAdClickResponse(string url)
+    {
+        if (!url.StartsWith("https://metarea.net/api/udon/ad-click/")) return false;
+        if (url == clickRequestUrl) clickRequestUrl = "";
+        return true;
+    }
+
+    // Fixed editor-baked URLs only. Events are coalesced and never retried.
+    // 0/1: first feed result, 2/3: first status result, 4: first active board,
+    // 5: ad detail, 6: accepted local portal request (not a confirmed visit).
+    private void QueueStatistics(int kind)
+    {
+        if (!onlineMode || !anonymousStatistics || kind < 0 || kind >= 7) return;
+        if (sharedDataSource != null && sharedDataSource != this) { sharedDataSource.QueueStatistics(kind); return; }
+        if (statisticsUrls == null || statisticsUrls.Length != 7 || statisticsSent >= 12) return;
+        if (kind < 2 && (statisticsSeen[0] || statisticsSeen[1])) return;
+        if (kind >= 2 && kind < 4 && (statisticsSeen[2] || statisticsSeen[3])) return;
+        if (kind == 4 && statisticsSeen[4]) return;
+        if (statisticsPending[kind] || (statisticsSeen[kind] && Time.realtimeSinceStartup - statisticsQueuedAt[kind] < 60f)) return;
+        statisticsSeen[kind] = true; statisticsPending[kind] = true; statisticsQueuedAt[kind] = Time.realtimeSinceStartup;
+    }
+
+    private bool IsStatisticsUrl(string url)
+    {
+        if (statisticsUrls == null) return false;
+        for (int i = 0; i < statisticsUrls.Length; i++)
+            if (statisticsUrls[i] != null && statisticsUrls[i].Get() == url) return true;
+        return false;
+    }
+
+    private int TakeStatisticsEvent()
+    {
+        if (!onlineMode || !anonymousStatistics || sharedDataSource != null || statisticsSent >= 12 || Time.realtimeSinceStartup < nextStatisticsSend) return -1;
+        if (loading || sponsorStatusLoading || pendingDrawTab >= 0 || imageRequestInFlight || !string.IsNullOrEmpty(clickRequestUrl)) return -1;
+        if (Time.realtimeSinceStartup - lastFeedAttempt < 6f || Time.realtimeSinceStartup - sponsorStatusStarted < 6f) return -1;
+        for (int i = 0; i < 7; i++) if (statisticsPending[i])
+        {
+            statisticsPending[i] = false; statisticsSent++; nextStatisticsSend = Time.realtimeSinceStartup + 60f; nextClickSend = Time.realtimeSinceStartup + 5.1f;
+            return i;
+        }
+        return -1;
+    }
+
+    private void PumpStatistics()
+    {
+        // Editor validation must not generate production statistics.
+        if (Networking.LocalPlayer == null || statisticsUrls == null || statisticsUrls.Length != 7) return;
+        int kind = TakeStatisticsEvent();
+        if (kind >= 0 && statisticsUrls[kind] != null && !string.IsNullOrEmpty(statisticsUrls[kind].Get()))
+            VRCStringDownloader.LoadUrl(statisticsUrls[kind], (IUdonEventReceiver)this);
+    }
     [HideInInspector] public int drawRequestCount;
     [HideInInspector] public int statusRequestCount;
     [HideInInspector] public int imageRequestCount;
@@ -213,6 +370,67 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int dailyOne = -1;
     private int dailyTwo = -1;
     private int dailyChill = -1;
+    [HideInInspector] public bool manyVersion;
+    [HideInInspector] public Button[] manyButtons;
+    [HideInInspector] public RawImage[] manyPictures;
+    [HideInInspector] public Text[] manyCaptions, manyTitles, manyAuthors;
+    private int[] manyWorlds = new int[4];
+    private int selectedManySlot = -1;
+
+    private void BuildManyWorlds()
+    {
+        for (int i = 0; i < 4; i++) manyWorlds[i] = -1;
+        if (!ready) return;
+        manyWorlds[0] = dailyOne; manyWorlds[1] = dailyTwo;
+        for (int w = 0; w < baseWorldCount; w++)
+            if (!sponsorOnly[w]) { manyWorlds[2] = w; break; }
+        if (onlineMode)
+        {
+            if (drawCounts[0] > 0) manyWorlds[3] = 64;
+        }
+        else
+        {
+            for (int w = 0; w < baseWorldCount; w++)
+                if (!sponsorOnly[w] && recommended[w]) { manyWorlds[3] = w; break; }
+        }
+    }
+    private void RenderMany()
+    {
+        BuildManyWorlds();
+        for (int k = 0; k < 4; k++)
+        {
+            int w = manyWorlds[k]; bool valid = ready && w >= 0;
+            bool compact = ready && sponsoredCount > 0;
+            float height = compact ? 255f : 388f;
+            float photoHeight = compact ? 133f : 200f;
+            Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 401), 372, height);
+            Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
+            Place(manyCaptions[k].rectTransform, 10, photoHeight + 18, 352, 28);
+            Place(manyTitles[k].rectTransform, 10, photoHeight + 49, 352, compact ? 46 : 80);
+            Place(manyAuthors[k].rectTransform, 10, height - 29, 352, 22);
+            manyButtons[k].interactable = valid;
+            manyCaptions[k].text = k == 0 ? "今日のランダムワールド①" : k == 1 ? "今日のランダムワールド②" : k == 2 ? "紹介最新ワールド" : "おすすめランダムワールド";
+            bool waiting = !ready ? !failed : k == 3 && onlineMode && !drawHasResult[0] && string.IsNullOrEmpty(drawErrors[0]);
+            bool loadFailed = !ready ? failed : k == 3 && onlineMode && !string.IsNullOrEmpty(drawErrors[0]);
+            manyTitles[k].text = valid ? titles[w] : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載準備中";
+            manyAuthors[k].text = valid && !string.IsNullOrEmpty(authors[w]) ? "by " + authors[w] : "";
+            SetPhoto(manyPictures[k], valid ? w : -1);
+            if (!valid && ready && k == 3 && onlineMode && !drawHasResult[0])
+                SetPlaceholder(manyPictures[k], waiting ? 0 : 2);
+        }
+    }
+
+    public void _Many0() { OpenMany(0); }
+    public void _Many1() { OpenMany(1); }
+    public void _Many2() { OpenMany(2); }
+    public void _Many3() { OpenMany(3); }
+    private void OpenMany(int slot) { if (manyVersion && slot >= 0 && slot < 4 && manyWorlds[slot] >= 0) { selectedManySlot = slot; Open(manyWorlds[slot]); } }
+    private int ManyPosition()
+    { if (selectedManySlot >= 0 && selectedManySlot < 4 && manyWorlds[selectedManySlot] == selected) return selectedManySlot; for (int k = 0; k < 4; k++) if (manyWorlds[k] == selected) return k; return -1; }
+    private bool CanStepMany(int direction)
+    { int p = ManyPosition(); if (p < 0) return false; for (int k = p + direction; k >= 0 && k < 4; k += direction) if (manyWorlds[k] >= 0) return true; return false; }
+    private void StepMany(int direction)
+    { int p = ManyPosition(); if (p < 0) return; for (int k = p + direction; k >= 0 && k < 4; k += direction) if (manyWorlds[k] >= 0) { OpenMany(k); return; } }
     private int adWorld = -1;
     private string adName = "MetaRea WORLD ARCHIVE";
     private string adCopy = "次に行く世界を、ここから。";
@@ -241,20 +459,38 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int[] adWorlds;
     private int[] adBannerRows;
     private bool bannerAtlasV2;
+    private bool bannerAtlasV3;
     private int[] adBannerPages;
     private int[] adDetailCells;
     private int extraSponsorPages;
     private int detailSponsorPages;
-    // Slot 0: extra banner page; slots 1..3: detail pages.
-    private Texture2D[] extraSponsorTextures = new Texture2D[4];
-    private IVRCImageDownload[] extraSponsorDownloads = new IVRCImageDownload[4];
-    private bool[] extraSponsorLoading = new bool[4];
-    private bool[] extraSponsorFailed = new bool[4];
-    private float[] extraSponsorAttempts = new float[] { -999f, -999f, -999f, -999f };
+    private bool detailAtlasV2;
+    private int detailCellsPerPage = 4;
+    private int topSponsorPages;
+    private int[] adTopImageIndices;
+    private bool[] adShowInBanner;
+    private int[] topImageIndices, topWeights;
+    private bool[] topGoldFrames;
+    // Slot 0: extra banner; slots 1..4: details; slots 5..6: TOP images.
+    private Texture2D[] extraSponsorTextures = new Texture2D[7];
+    private IVRCImageDownload[] extraSponsorDownloads = new IVRCImageDownload[7];
+    private bool[] extraSponsorLoading = new bool[7];
+    private bool[] extraSponsorFailed = new bool[7];
+    private float[] extraSponsorAttempts = new float[] { -999f, -999f, -999f, -999f, -999f, -999f, -999f };
     private int adCount;
     private int activeAdCount;
     private string[] adIds;
     private string[] adKeys;
+    private int[] adTrackingSlots;
+    private bool[] adTrackingAllowed;
+    [HideInInspector] public VRCUrl[] detailTrackingUrls;
+    private bool IsDetailTrackingResult(IVRCImageDownload result)
+    {
+        if (!result.Url.Get().StartsWith("https://metarea.net/api/udon/ad-detail/")) return false;
+
+        result.Dispose();
+        return true;
+    }
     private double[] adStarts;
     private double[] adEnds;
     private bool[] adAllowed;
@@ -335,6 +571,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void Start()
     {
+        nextStatisticsSend = Time.realtimeSinceStartup + 60f;
         if (isSharedDataSource) { SendCustomEventDelayedSeconds(nameof(_Initialize), 1f); return; }
         if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
         if (reshuffleButton != null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
@@ -346,6 +583,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             favoriteWorldAuthors = favoritesSettings.favoriteWorldAuthors;
         }
         BuildFavorites();
+        InitializeDisplayMode();
         _ApplyAppearance();
         if (portalMarker != null) portalMarker.gameObject.SetActive(false);
         if (editorPortalPreview != null) editorPortalPreview.SetActive(false);
@@ -390,6 +628,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public override void OnStringLoadSuccess(IVRCStringDownload result)
     {
+        if (IsAdClickResponse(result.Url.Get())) return;
+        if (IsStatisticsUrl(result.Url.Get())) return;
         if (IsDrawMetadataUrl(result.Url.Get()))
         {
             if (!drawLoadingMetadata || pendingDrawTab < 0 || result.Url.Get() != DrawUrl(pendingDrawTab).Get()) return;
@@ -402,25 +642,30 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         if (sponsorStatusUrl != null && result.Url.Get() == sponsorStatusUrl.Get())
         {
-            if (!ApplySponsorStatus(result.Result)) FailSponsorStatus();
+            bool accepted = ApplySponsorStatus(result.Result);
+            QueueStatistics(accepted ? 2 : 3);
+            if (!accepted) FailSponsorStatus();
             Render(); return;
         }
         loading = false;
         if (!Networking.IsOwner(gameObject) || !string.IsNullOrEmpty(pinnedSnapshot)) return;
         if (Parse(result.Result))
         {
+            QueueStatistics(0);
             // Pin the actual small metadata snapshot, not a mutable URL. This
             // also gives late joiners the same metadata without a new request.
             pinnedSnapshot = result.Result;
             appliedSnapshot = pinnedSnapshot;
             RequestSerialization();
         }
-        else failed = true;
+        else { failed = true; QueueStatistics(1); }
         Render();
     }
 
     public override void OnStringLoadError(IVRCStringDownload result)
     {
+        if (IsAdClickResponse(result.Url.Get())) return;
+        if (IsStatisticsUrl(result.Url.Get())) return;
         if (IsDrawMetadataUrl(result.Url.Get()))
         {
             if (drawLoadingMetadata && pendingDrawTab >= 0 && result.Url.Get() == DrawUrl(pendingDrawTab).Get())
@@ -428,8 +673,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         if (sponsorStatusUrl != null && result.Url.Get() == sponsorStatusUrl.Get())
-        { FailSponsorStatus(); Render(); return; }
-        loading = false; if (!string.IsNullOrEmpty(pinnedSnapshot)) return; failed = true; Render();
+        { QueueStatistics(3); FailSponsorStatus(); Render(); return; }
+        loading = false; if (!string.IsNullOrEmpty(pinnedSnapshot)) return; failed = true; QueueStatistics(1); Render();
     }
 
     public void _Retry()
@@ -439,7 +684,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!string.IsNullOrEmpty(pinnedSnapshot))
         {
             ApplySnapshot(); imageFailed = false; sponsorImageFailed = false;
-            for (int i = 0; i < 4; i++) extraSponsorFailed[i] = false;
+            for (int i = 0; i < 7; i++) extraSponsorFailed[i] = false;
             PumpImageDownloads(); BeginSponsorStatusDownload(); Render(); return;
         }
         if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _RetryOnOwner();
@@ -577,21 +822,28 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         sponsorStatusProtocol = Integer(d, "sponsorStatusVersion", 0) == 1;
         sponsorStatusValid = false; sponsorStatusLoading = false; sponsorStatusFailed = false;
         sponsorStatusStarted = -999f; nextSponsorStatusAttempt = 0;
-        bannerAtlasV2 = Str(d, "sponsorAtlasLayout") == "banner-v2";
-        extraSponsorPages = Mathf.Clamp(Integer(d, "sponsorBannerPages", 1) - 1, 0, 1);
-        detailSponsorPages = Str(d, "sponsorDetailAtlasLayout") == "detail-v1" ? Mathf.Clamp(Integer(d, "sponsorDetailPages", 0), 0, 3) : 0;
+        bannerAtlasV3 = Str(d, "sponsorAtlasLayout") == "banner-v3";
+        bannerAtlasV2 = bannerAtlasV3 || Str(d, "sponsorAtlasLayout") == "banner-v2";
+        extraSponsorPages = bannerAtlasV3 ? 0 : Mathf.Clamp(Integer(d, "sponsorBannerPages", 1) - 1, 0, 1);
+        detailAtlasV2 = Str(d, "sponsorDetailAtlasLayout") == "detail-v2";
+        detailCellsPerPage = detailAtlasV2 ? 9 : 4;
+        detailSponsorPages = detailAtlasV2 ? Mathf.Clamp(Integer(d, "sponsorDetailPages", 0), 0, 2) : Str(d, "sponsorDetailAtlasLayout") == "detail-v1" ? Mathf.Clamp(Integer(d, "sponsorDetailPages", 0), 0, 4) : 0;
+        topSponsorPages = Str(d, "sponsorTopAtlasLayout") == "top-v1" ? Mathf.Clamp(Integer(d, "sponsorTopPages", 0), 0, 2) : 0;
         DataToken token;
         if (d.TryGetValue("ads", TokenType.DataList, out token))
         {
             DataList list = token.DataList;
-            int capacity = Mathf.Min(10, list.Count);
+            int capacity = Mathf.Min(16, list.Count);
             adNames = new string[capacity]; adDescriptions = new string[capacity]; adSponsors = new string[capacity]; adUrls = new string[capacity];
             adCells = new int[capacity]; adQrCells = new int[capacity]; adWorlds = new int[capacity];
             adBannerRows = new int[capacity];
             adBannerPages = new int[capacity]; adDetailCells = new int[capacity];
             adIds = new string[capacity]; adKeys = new string[capacity];
+            adTrackingSlots = new int[capacity]; adTrackingAllowed = new bool[capacity];
+            adClickSlots = new int[capacity]; adClickAllowed = new bool[capacity]; adPortalEnabled = new bool[capacity];
             adStarts = new double[capacity]; adEnds = new double[capacity];
             adAllowed = new bool[capacity]; adActive = new bool[capacity];
+            adTopImageIndices = new int[capacity]; adShowInBanner = new bool[capacity];
             for (int i = 0; i < capacity; i++)
             {
                 if (list[i].TokenType != TokenType.DataDictionary) continue;
@@ -604,25 +856,34 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 int row = Integer(a, "bannerRow", i);
                 int bannerPage = Integer(a, "bannerPage", 0);
                 int detailCell = Integer(a, "detailImageIndex", -1);
-                if (bannerPage < 0 || bannerPage > extraSponsorPages || detailCell >= detailSponsorPages * 4 || detailCell > 9) continue;
-                if (bannerAtlasV2 && (row < 0 || row > 7)) continue;
+                if (bannerPage < 0 || bannerPage > extraSponsorPages || detailCell >= detailSponsorPages * detailCellsPerPage || detailCell > 15) continue;
+                if (bannerAtlasV2 && (row < 0 || row >= (bannerAtlasV3 ? 16 : 8))) continue;
                 adNames[adCount] = Str(a, "title"); adDescriptions[adCount] = Str(a, "description");
                 adSponsors[adCount] = Str(a, "sponsor"); adUrls[adCount] = url;
                 adCells[adCount] = cell; adQrCells[adCount] = qr; adWorlds[adCount] = FindId(Str(a, "worldId"));
                 adBannerRows[adCount] = row;
                 adBannerPages[adCount] = bannerPage; adDetailCells[adCount] = detailCell;
+                int topImage = Integer(a, "topImageIndex", -1);
+                adTopImageIndices[adCount] = topImage >= 0 && topImage < topSponsorPages * 8 ? topImage : -1;
+                DataToken showToken;
+                adShowInBanner[adCount] = !a.TryGetValue("showInBanner", out showToken) || (showToken.TokenType == TokenType.Boolean && showToken.Boolean);
                 adIds[adCount] = Str(a, "id"); adKeys[adCount] = Str(a, "contentKey");
+                int clickSlot = Integer(a, "clickTrackingSlot", -1);
+                adClickSlots[adCount] = clickSlot >= 0 && clickSlot < 4096 ? clickSlot : -1;
+                adPortalEnabled[adCount] = Str(a, "adType") == "world" || Str(a, "adType") == "image_world";
+                int trackingSlot = Integer(a, "detailTrackingSlot", -1);
+                adTrackingSlots[adCount] = trackingSlot >= 0 && trackingSlot < 65535 ? trackingSlot : -1;
                 adStarts[adCount] = Number(a, "startsAtUnix"); adEnds[adCount] = Number(a, "endsAtUnix");
                 adCount++;
             }
         }
-        sponsoredWorlds = new int[10]; sponsorOrder = new int[10];
-        placementIds = new string[10]; placementKeys = new string[10]; placementWorlds = new int[10];
-        placementStarts = new double[10]; placementEnds = new double[10]; placementAllowed = new bool[10]; placementActive = new bool[10];
+        sponsoredWorlds = new int[16]; sponsorOrder = new int[16];
+        placementIds = new string[16]; placementKeys = new string[16]; placementWorlds = new int[16];
+        placementStarts = new double[16]; placementEnds = new double[16]; placementAllowed = new bool[16]; placementActive = new bool[16];
         if (sponsorStatusProtocol && d.TryGetValue("sponsoredWorlds", TokenType.DataList, out token))
         {
             DataList list = token.DataList;
-            for (int i = 0; i < list.Count && placementCount < 10 - adCount; i++)
+            for (int i = 0; i < list.Count && placementCount < 16 - adCount; i++)
             {
                 if (list[i].TokenType != TokenType.DataDictionary) continue;
                 DataDictionary p = list[i].DataDictionary;
@@ -643,14 +904,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void ReadTopPlacements(DataDictionary d)
     {
         topCount = 0; openedTop = -1;
-        topIds = new string[10]; topKeys = new string[10]; topAdTitles = new string[10];
-        topTypes = new int[10]; topWorlds = new int[10]; topAds = new int[10];
-        topStarts = new double[10]; topEnds = new double[10]; topAllowed = new bool[10]; topActive = new bool[10];
+        topIds = new string[16]; topKeys = new string[16]; topAdTitles = new string[16];
+        topClickSlots = new int[16]; topClickAllowed = new bool[16];
+        topImageIndices = new int[16]; topWeights = new int[16]; topGoldFrames = new bool[16];
+        topTypes = new int[16]; topWorlds = new int[16]; topAds = new int[16];
+        topStarts = new double[16]; topEnds = new double[16]; topAllowed = new bool[16]; topActive = new bool[16];
         DataToken token;
         topPlacementProtocol = d.TryGetValue("topPlacements", out token);
         if (!topPlacementProtocol || token.TokenType != TokenType.DataList || !sponsorStatusProtocol) return;
         DataList list = token.DataList;
-        for (int i = 0; i < list.Count && topCount < 10; i++)
+        for (int i = 0; i < list.Count && topCount < 16; i++)
         {
             if (list[i].TokenType != TokenType.DataDictionary) continue;
             DataDictionary p = list[i].DataDictionary;
@@ -663,7 +926,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             for (int j = 0; j < adCount; j++) if (adIds[j] == Str(p, "adId")) ad = j;
             if ((kind != 1 && world < 0) || (kind != 0 && ad < 0)) continue;
             topIds[topCount] = id; topKeys[topCount] = Str(p, "contentKey"); topTypes[topCount] = kind;
+            int clickSlot = Integer(p, "clickTrackingSlot", -1);
+            topClickSlots[topCount] = clickSlot >= 0 && clickSlot < 4096 ? clickSlot : -1;
             topWorlds[topCount] = world; topAds[topCount] = ad;
+            int topImage = Integer(p, "topImageIndex", ad >= 0 ? adTopImageIndices[ad] : -1);
+            topImageIndices[topCount] = topImage >= 0 && topImage < topSponsorPages * 8 ? topImage : -1;
+            topWeights[topCount] = Mathf.Clamp(Integer(p, "displayWeight", 1), 1, 10);
+            DataToken goldToken;
+            topGoldFrames[topCount] = p.TryGetValue("goldFrame", TokenType.Boolean, out goldToken) && goldToken.Boolean;
             topAdTitles[topCount] = Str(p, "title");
             if (string.IsNullOrEmpty(topAdTitles[topCount])) topAdTitles[topCount] = kind == 0 ? titles[world] : adNames[ad];
             topStarts[topCount] = Number(p, "startsAtUnix"); topEnds[topCount] = Number(p, "endsAtUnix");
@@ -678,7 +948,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private bool TopPortalAvailable()
-    { return topPlacementProtocol && IsTopActive(openedTop) && topTypes[openedTop] == 2 && topAds[openedTop] == openedAd && CanUseWorld(topWorlds[openedTop]); }
+    {
+        if (openedTop < 0) return IsAdActive(openedAd) && adPortalEnabled[openedAd] && CanUseWorld(adWorlds[openedAd]);
+        return topPlacementProtocol && IsTopActive(openedTop) && topTypes[openedTop] == 2 && topAds[openedTop] == openedAd && CanUseWorld(topWorlds[openedTop]);
+    }
 
     private double Number(DataDictionary d, string key)
     {
@@ -713,6 +986,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (topTypes[i] != 1 && topWorlds[i] == world && IsTopActive(i)) return true;
         for (int i = 0; i < placementCount; i++)
             if (placementWorlds[i] == world && placementAllowed[i] && InPeriod(placementStarts[i], placementEnds[i])) return true;
+        for (int i = 0; i < adCount; i++)
+            if (adPortalEnabled[i] && adWorlds[i] == world && IsAdActive(i)) return true;
         return false;
     }
 
@@ -741,7 +1016,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool ValidStatusList(DataList list)
     {
-        if (list.Count > 10) return false;
+        if (list.Count > 16) return false;
         for (int i = 0; i < list.Count; i++)
         {
             if (list[i].TokenType != TokenType.DataDictionary) return false;
@@ -776,11 +1051,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         for (int i = 0; i < adCount; i++)
         {
             adAllowed[i] = false;
+            adClickAllowed[i] = false;
+            adTrackingAllowed[i] = false;
             for (int j = 0; j < ads.Count; j++)
             {
                 DataDictionary item = ads[j].DataDictionary;
                 if (Str(item, "id") != adIds[i] || Str(item, "contentKey") != adKeys[i]) continue;
                 adAllowed[i] = true; adStarts[i] = Number(item, "startsAtUnix"); adEnds[i] = Number(item, "endsAtUnix");
+                adClickAllowed[i] = adClickSlots[i] >= 0 && Integer(item, "clickTrackingSlot", -1) == adClickSlots[i];
+                adTrackingAllowed[i] = adTrackingSlots[i] >= 0 && Integer(item, "detailTrackingSlot", -1) == adTrackingSlots[i];
             }
         }
         for (int i = 0; i < placementCount; i++)
@@ -796,11 +1075,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         for (int i = 0; i < topCount; i++)
         {
             topAllowed[i] = false;
+            topClickAllowed[i] = false;
             for (int j = 0; j < tops.Count; j++)
             {
                 DataDictionary item = tops[j].DataDictionary;
                 if (Str(item, "id") != topIds[i] || Str(item, "contentKey") != topKeys[i]) continue;
                 topAllowed[i] = true; topStarts[i] = Number(item, "startsAtUnix"); topEnds[i] = Number(item, "endsAtUnix");
+                topClickAllowed[i] = topClickSlots[i] >= 0 && Integer(item, "clickTrackingSlot", -1) == topClickSlots[i];
             }
         }
         sponsorStatusJson = json; sponsorStatusVersion++;
@@ -833,7 +1114,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             CancelSponsorFade();
             activeAdCount = 0;
-            for (int i = 0; i < adCount; i++) if (adActive[i]) adOrder[activeAdCount++] = i;
+            for (int i = 0; i < adCount; i++) if (adActive[i] && adShowInBanner[i]) adOrder[activeAdCount++] = i;
             sponsoredCount = 0;
             if (topPlacementProtocol)
             {
@@ -878,7 +1159,12 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (activeAdCount > 0) { if (adCursor >= activeAdCount) { ShuffleAds(); adCursor = 0; } currentAd = adOrder[adCursor++]; }
         else currentAd = -1;
-        if (sponsoredCount > 0)
+        if (topPlacementProtocol && sponsoredCount > 0)
+        {
+            sponsorLeft = PickWeightedTop(-1);
+            sponsorRight = PickWeightedTop(sponsorLeft);
+        }
+        else if (sponsoredCount > 0)
         {
             if (sponsorCursor >= sponsoredCount) { ShuffleSponsorWorlds(); sponsorCursor = 0; }
             sponsorLeft = sponsorOrder[sponsorCursor++]; sponsorRight = -1;
@@ -891,6 +1177,20 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         else { sponsorLeft = -1; sponsorRight = -1; }
         nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds);
+    }
+
+    private int PickWeightedTop(int exclude)
+    {
+        int total = 0;
+        for (int i = 0; i < topCount; i++) if (i != exclude && IsTopActive(i)) total += topWeights[i];
+        if (total <= 0) return -1;
+        int pick = Random.Range(0, total);
+        for (int i = 0; i < topCount; i++)
+        {
+            if (i == exclude || !IsTopActive(i)) continue;
+            pick -= topWeights[i]; if (pick < 0) return i;
+        }
+        return -1;
     }
 
     private void SetSponsorFade(float alpha, bool interactive)
@@ -943,7 +1243,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             if (!IsTopActive(world)) return;
             if (topTypes[world] == 0) { RequestPortal(topWorlds[world]); return; }
-            CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; PumpImageDownloads(); Render(); return;
+            CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render();
+            if (view == 3 && adPanel.activeSelf) QueueAdClick(topIds[world], topKeys[world], topClickSlots[world], 0);
+            return;
         }
         if (!IsSponsoredWorldActive(world)) return;
         RequestPortal(world);
@@ -955,31 +1257,86 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (snapshotIndex < 0) return null;
         if (slot == 0) return sponsorExtraAtlasUrls != null && snapshotIndex < sponsorExtraAtlasUrls.Length ? sponsorExtraAtlasUrls[snapshotIndex] : null;
-        int index = snapshotIndex * 3 + slot - 1;
+        if (slot >= 5)
+        {
+            int topIndex = snapshotIndex * 2 + slot - 5;
+            return sponsorTopAtlasUrls != null && topIndex < sponsorTopAtlasUrls.Length ? sponsorTopAtlasUrls[topIndex] : null;
+        }
+        int index = snapshotIndex * 4 + slot - 1;
         return sponsorDetailAtlasUrls != null && index < sponsorDetailAtlasUrls.Length ? sponsorDetailAtlasUrls[index] : null;
     }
 
     private int ExtraSponsorSlot(string url)
     {
-        for (int slot = 0; slot < 4; slot++)
+        for (int slot = 0; slot < 7; slot++)
         { var candidate = ExtraSponsorUrl(slot); if (candidate != null && candidate.Get() == url) return slot; }
         return -1;
     }
 
-    private void BeginExtraSponsorImages()
+    private bool IsAdInVisibleTop(int ad)
     {
-        if (!onlineMode || !ready || adCount == 0) return;
-        for (int slot = 0; slot < 4; slot++)
+        if (!gameObject.activeInHierarchy || topPanel == null || !topPanel.activeInHierarchy || !topPlacementProtocol) return false;
+        return (sponsorLeft >= 0 && sponsorLeft < topCount && topAds[sponsorLeft] == ad) ||
+            (sponsorRight >= 0 && sponsorRight < topCount && topAds[sponsorRight] == ad);
+    }
+
+    private float openedDetailRequestedAt;
+
+    private int OpenedDetailSlot()
+    {
+        if (!gameObject.activeInHierarchy || view != 3 || !IsAdActive(openedAd)) return -1;
+        int cell = adDetailCells[openedAd]; if (cell < 0 || cell >= 16) return -1;
+        int slot = 1 + cell / detailCellsPerPage;
+        return extraSponsorFailed[slot] || extraSponsorLoading[slot] || extraSponsorTextures[slot] != null || Time.realtimeSinceStartup - extraSponsorAttempts[slot] < 5f ? -1 : slot;
+    }
+
+    private int NextOpenedDetailSlot()
+    {
+        int slot = OpenedDetailSlot(); float newest = slot >= 0 ? openedDetailRequestedAt : -1f;
+        if (isSharedDataSource && sharedDisplays != null)
+            for (int d = 0; d < sharedDisplays.Length; d++)
+            {
+                var display = sharedDisplays[d]; if (display == null) continue;
+                int candidate = display.OpenedDetailSlot();
+                if (candidate >= 0 && (extraSponsorTextures[candidate] != null || extraSponsorLoading[candidate] || extraSponsorFailed[candidate])) continue;
+                if (candidate >= 0 && display.openedDetailRequestedAt > newest)
+                { slot = candidate; newest = display.openedDetailRequestedAt; }
+            }
+        return slot;
+    }
+
+    private int NextDetailPrefetchSlot()
+    {
+        int bestSlot = -1; int bestPriority = 4;
+        for (int ad = 0; ad < adCount; ad++)
         {
-            bool needed = slot == 0 ? extraSponsorPages > 0 : view == 3 && IsAdActive(openedAd) && adDetailCells[openedAd] >= 0 && slot == adDetailCells[openedAd] / 4 + 1;
-            if (isSharedDataSource && slot > 0 && sharedDisplays != null)
+            int cell = adDetailCells[ad];
+            if (!IsAdActive(ad) || cell < 0 || cell >= 16) continue;
+            int slot = 1 + cell / detailCellsPerPage;
+            if (extraSponsorFailed[slot] || extraSponsorLoading[slot] || extraSponsorTextures[slot] != null || Time.realtimeSinceStartup - extraSponsorAttempts[slot] < 5f) continue;
+            int priority = IsAdInVisibleTop(ad) ? 0 : view == 3 && openedAd == ad ? 1 : currentAd == ad ? 2 : 3;
+            if (isSharedDataSource && sharedDisplays != null)
                 for (int d = 0; d < sharedDisplays.Length; d++)
                 {
                     var display = sharedDisplays[d];
-                    if (display == null || !display.gameObject.activeInHierarchy || display.view != 3) continue;
-                    int ad = display.openedAd;
-                    if (IsAdActive(ad) && adDetailCells[ad] >= 0 && slot == adDetailCells[ad] / 4 + 1) needed = true;
+                    if (display == null || !display.gameObject.activeInHierarchy) continue;
+                    int other = display.IsAdInVisibleTop(ad) ? 0 : display.view == 3 && display.openedAd == ad ? 1 : display.currentAd == ad ? 2 : 3;
+                    if (other < priority) priority = other;
                 }
+            if (priority < bestPriority) { bestPriority = priority; bestSlot = slot; }
+        }
+        return bestSlot;
+    }
+
+    // 0: TOP images, 1: extra banner, 2: background details, 3: opened detail.
+    private void BeginExtraSponsorImages(int group)
+    {
+        if (!onlineMode || !ready || adCount == 0) return;
+        int detailSlot = group == 3 ? NextOpenedDetailSlot() : group == 2 ? NextDetailPrefetchSlot() : -1;
+        if (group >= 2 && detailSlot < 0) return;
+        for (int slot = group == 0 ? 5 : group == 1 ? 0 : detailSlot; slot < (group == 0 ? 7 : group == 1 ? 1 : detailSlot + 1); slot++)
+        {
+            bool needed = slot >= 5 ? slot - 5 < topSponsorPages : slot == 0 ? extraSponsorPages > 0 : true;
             if (!needed || extraSponsorFailed[slot] || extraSponsorLoading[slot] || extraSponsorTextures[slot] != null || Time.realtimeSinceStartup - extraSponsorAttempts[slot] < 5f) continue;
             var url = ExtraSponsorUrl(slot);
             if (url == null || string.IsNullOrEmpty(url.Get())) { extraSponsorFailed[slot] = true; continue; }
@@ -997,9 +1354,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private bool ExtraSponsorImagesLoading()
-    { for (int i = 0; i < 4; i++) if (extraSponsorLoading[i]) return true; return false; }
+    { for (int i = 0; i < 7; i++) if (extraSponsorLoading[i]) return true; return false; }
     private bool ExtraSponsorImagesFailed()
-    { for (int i = 0; i < 4; i++) if (extraSponsorFailed[i] && !extraSponsorLoading[i]) return true; return false; }
+    { for (int i = 0; i < 7; i++) if (extraSponsorFailed[i] && !extraSponsorLoading[i]) return true; return false; }
 
     private void BeginSponsorImageDownload()
     {
@@ -1035,21 +1392,35 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void MarkImageRequest()
     { imageRequestCount++; imageRequestInFlight = true; imageRequestStarted = Time.realtimeSinceStartup; nextImageRequestAt = imageRequestStarted + 5.1f; }
 
+    private bool InitialImagesPending()
+    {
+        if (atlasTexture == null && !imageFailed) return true;
+        if (adCount == 0) return false;
+        if (sponsorTexture == null && !sponsorImageFailed) return true;
+        if (extraSponsorPages > 0 && extraSponsorTextures[0] == null && !extraSponsorFailed[0]) return true;
+        for (int slot = 5; slot < 5 + topSponsorPages; slot++)
+            if (extraSponsorTextures[slot] == null && !extraSponsorFailed[slot]) return true;
+        return false;
+    }
+
     private void PumpImageDownloads()
     {
-        if (sharedDataSource != null) return;
+        if (sharedDataSource != null) { if (sharedDataSource != this) sharedDataSource.PumpImageDownloads(); return; }
         if (!onlineMode || !ready || imageRequestInFlight || drawVerifying || Time.realtimeSinceStartup < nextImageRequestAt) return;
-        // Do not flood VRChat's random-order queue. First show the banner/QR atlas.
-        BeginSponsorImageDownload(); if (imageRequestInFlight) return;
-        if (currentAd >= 0 && adBannerPages[currentAd] == 1 && extraSponsorTextures[0] == null)
-        { BeginExtraSponsorImages(); if (imageRequestInFlight) return; }
+        // A clicked detail wins the next available request; never cancel an
+        // in-flight image or bypass the SDK interval. Passive prefetch stays last.
+        BeginExtraSponsorImages(3); if (imageRequestInFlight) return;
         BeginImageDownload(); if (imageRequestInFlight) return;
+        BeginExtraSponsorImages(0); if (imageRequestInFlight) return;
+        BeginSponsorImageDownload(); if (imageRequestInFlight) return;
+        BeginExtraSponsorImages(1); if (imageRequestInFlight) return;
         BeginDrawImage(); if (imageRequestInFlight) return;
-        BeginExtraSponsorImages();
+        if (pendingDrawTab < 0 && !InitialImagesPending()) BeginExtraSponsorImages(2);
     }
 
     public override void OnImageLoadSuccess(IVRCImageDownload result)
     {
+        if (IsDetailTrackingResult(result)) return;
         if (result.Url.Get().Contains("/draw-atlas/")) { VerifyDrawImage(result); return; }
         int extraSlot = ExtraSponsorSlot(result.Url.Get());
         if (extraSlot >= 0)
@@ -1057,8 +1428,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (result != extraSponsorDownloads[extraSlot]) { result.Dispose(); return; }
             imageRequestInFlight = false;
             extraSponsorLoading[extraSlot] = false;
-            int height = extraSlot == 0 ? 2048 : 1728;
-            if (result.Result == null || result.Result.width != 2048 || result.Result.height != height)
+            int width = extraSlot > 0 && extraSlot < 5 && detailAtlasV2 ? 2016 : 2048;
+            int height = extraSlot >= 5 ? 1536 : extraSlot == 0 ? 2048 : detailAtlasV2 ? 1701 : 1728;
+            if (result.Result == null || result.Result.width != width || result.Result.height != height)
             { result.Dispose(); extraSponsorDownloads[extraSlot] = null; extraSponsorFailed[extraSlot] = true; Render(); return; }
             extraSponsorTextures[extraSlot] = result.Result; extraSponsorFailed[extraSlot] = false; Render(); return;
         }
@@ -1082,6 +1454,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public override void OnImageLoadError(IVRCImageDownload result)
     {
+        if (IsDetailTrackingResult(result)) return;
         if (result.Url.Get().Contains("/draw-atlas/"))
         { if (pendingDrawTab >= 0 && result == pendingDrawDownload) { imageRequestInFlight = false; FailDraw("抽選画像の取得に失敗しました。再試行できます"); } return; }
         int extraSlot = ExtraSponsorSlot(result.Url.Get());
@@ -1114,6 +1487,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void SetPhoto(RawImage image, int worldIndex)
     {
         Texture texture = Picture(worldIndex);
+        if (texture == null)
+        {
+            int state = 1;
+            if (onlineMode)
+            {
+                if (!ready) state = failed ? 2 : 0;
+                else if (worldIndex >= 0 && worldIndex < count && pictureIndices[worldIndex] >= 0)
+                    state = worldIndex < 64 ? (imageFailed ? 2 : 0) : (string.IsNullOrEmpty(drawErrors[worldIndex < 128 ? 0 : 1]) ? 0 : 2);
+            }
+            SetPlaceholder(image, state);
+            return;
+        }
         image.texture = texture;
         image.color = texture == null ? new Color(.04f, .12f, .19f, 1) : Color.white;
         image.uvRect = new Rect(0, 0, 1, 1);
@@ -1136,6 +1521,64 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             float w = 1f / 8f - 1f / 2048f;
             float h = 143f / atlasHeight;
             image.uvRect = new Rect(x + crop.x * w, y + crop.y * h, crop.width * w, crop.height * h);
+        }
+    }
+
+    // A few small shared textures replace blank slots. No extra downloads or
+    // frame textures are needed; the indicator below animates at the UI tick rate.
+    private void SetPlaceholder(RawImage image, int state)
+    {
+        if (image == null) return;
+        image.texture = state == 0 ? loadingPicture : state == 2 ? failedPicture : unavailablePicture;
+        image.color = image.texture == null ? (state == 0 ? Color.black : new Color(.04f, .12f, .19f, 1)) : Color.white;
+        image.uvRect = new Rect(0, 0, 1, 1);
+        if (image.texture != null && image.rectTransform.rect.height > 0)
+        {
+            float source = (float)image.texture.width / image.texture.height;
+            float target = image.rectTransform.rect.width / image.rectTransform.rect.height;
+            if (target > source) { float h = source / target; image.uvRect = new Rect(0, (1-h)/2, 1, h); }
+            else { float w = target / source; image.uvRect = new Rect((1-w)/2, 0, w, 1); }
+        }
+    }
+
+    private void UpdateLoadingIndicators()
+    {
+        if (loadingTargets == null || loadingIndicators == null) return;
+        int frame = (int)(Time.unscaledTime * 3f) % 3;
+        string dots = frame == 0 ? "●  ○  ○" : frame == 1 ? "○  ●  ○" : "○  ○  ●";
+        for (int i = 0; i < loadingTargets.Length && i < loadingIndicators.Length; i++)
+        {
+            RawImage target = loadingTargets[i]; Text indicator = loadingIndicators[i];
+            if (target == null || indicator == null) continue;
+            bool show = loadingPicture != null && target.texture == loadingPicture;
+            indicator.enabled = show;
+            if (show && target.gameObject.activeInHierarchy && indicator.text != dots) indicator.text = dots;
+        }
+    }
+
+    private void RenderWorldRows()
+    {
+        bool drawTab = onlineMode && (tab == 1 || tab == 3);
+        int slot = tab == 1 ? 0 : 1;
+        bool waiting = !ready ? !failed : drawTab && !drawHasResult[slot] && string.IsNullOrEmpty(drawErrors[slot]);
+        bool loadFailed = !ready ? failed : drawTab && !string.IsNullOrEmpty(drawErrors[slot]);
+        for (int r = 0; r < 4; r++)
+        {
+            int p = page * 4 + r;
+            bool valid = ready && p < orderCount;
+            rows[r].SetActive(valid || waiting || (r == 0 && orderCount == 0));
+            rowMap[r] = valid ? order[p] : -1;
+            rows[r].GetComponent<Button>().interactable = valid;
+            if (valid)
+            {
+                int i = rowMap[r]; rowTitles[r].text = titles[i]; rowSummaries[r].text = descriptions[i]; SetPhoto(rowPictures[r], i);
+            }
+            else
+            {
+                rowTitles[r].text = waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載準備中";
+                rowSummaries[r].text = waiting ? (tab == 1 ? "おすすめワールドを取得しています" : tab == 3 ? "ランダムワールドを取得しています" : "ワールド情報を取得しています") : loadFailed ? "再試行してください" : "対象のワールドはありません";
+                SetPlaceholder(rowPictures[r], waiting ? 0 : loadFailed ? 2 : 1);
+            }
         }
     }
 
@@ -1394,7 +1837,36 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         Render();
     }
-    public void _Top() { SetTab(0); }
+    public void _Top()
+    {
+        SetTab(0);
+    }
+    private void InitializeDisplayMode()
+    {
+        if (!unifiedDisplay) return;
+        int mode = initialDisplayMode;
+        if (mode < 0 || mode > 1) mode = 0;
+        manyVersion = mode == 1;
+        favoriteTabSelected = false;
+        view = 0;
+        LayoutNavigation();
+    }
+    private void LayoutNavigation()
+    {
+        if (navImages == null) return;
+        int count = favoritesEnabled ? 5 : 4;
+        float width = (760f - (count - 1) * 5f) / count;
+        for (int i = 0; i < navImages.Length; i++)
+        {
+            if (navImages[i] == null) continue;
+            navImages[i].gameObject.SetActive(i < count);
+            if (i >= count) continue;
+            Place(navImages[i].rectTransform, 20 + i * (width + 5), 156, width, 92);
+            Text label = navImages[i].GetComponentInChildren<Text>(true);
+            if (label != null) Place(label.rectTransform, 0, 0, width, 92);
+        }
+        if (!favoritesEnabled && favoritesPanel != null) favoritesPanel.SetActive(false);
+    }
     public void _ToggleArchive()
     {
         if (archiveUrlPanel == null) return;
@@ -1425,17 +1897,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _Row3() { Open(rowMap[3]); }
     private void Open(int i) { if (!ready || !CanUseWorld(i) || sponsorOnly[i]) return; selected = i; sponsoredDetail = false; view = 2; Render(); }
     public void _Back() { view = tab == 0 ? 0 : 1; TryCommitDraw(); Render(); }
-    public void _Ad() { if (onlineMode && !IsAdActive(currentAd)) return; CancelSponsorFade(); if (view != 3) beforeAdView = view; openedTop = -1; openedAd = currentAd; view = 3; PumpImageDownloads(); Render(); }
+    public void _Ad() { if (onlineMode && !IsAdActive(currentAd)) return; CancelSponsorFade(); if (view != 3) beforeAdView = view; openedTop = -1; openedAd = currentAd; view = 3; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render(); if (onlineMode && view == 3 && adPanel.activeSelf) QueueAdClick(adIds[openedAd], adKeys[openedAd], adClickSlots[openedAd], 1); }
     public void _AdBack() { view = beforeAdView == 3 ? 0 : beforeAdView; nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds); Render(); }
     private int Position()
     { for (int i = 0; i < orderCount; i++) if (order[i] == selected) return i; return -1; }
     public void _PreviousWorld()
-    { if (sponsoredDetail) { int s = SponsoredPosition(); if (s > 0) OpenSponsored(sponsoredWorlds[s - 1]); } else if (tab == 0) Open(dailyOne); else { int p = Position(); if (p > 0) Open(order[p - 1]); } }
+    { if (sponsoredDetail) { int s = SponsoredPosition(); if (s > 0) OpenSponsored(sponsoredWorlds[s - 1]); } else if (tab == 0 && manyVersion) StepMany(-1); else if (tab == 0) Open(dailyOne); else { int p = Position(); if (p > 0) Open(order[p - 1]); } }
     public void _NextWorld()
-    { if (sponsoredDetail) { int s = SponsoredPosition(); if (s >= 0 && s + 1 < sponsoredCount) OpenSponsored(sponsoredWorlds[s + 1]); } else if (tab == 0) Open(secondSlotIsChill ? dailyChill : dailyTwo); else { int p = Position(); if (p >= 0 && p + 1 < orderCount) Open(order[p + 1]); } }
+    { if (sponsoredDetail) { int s = SponsoredPosition(); if (s >= 0 && s + 1 < sponsoredCount) OpenSponsored(sponsoredWorlds[s + 1]); } else if (tab == 0 && manyVersion) StepMany(1); else if (tab == 0) Open(secondSlotIsChill ? dailyChill : dailyTwo); else { int p = Position(); if (p >= 0 && p + 1 < orderCount) Open(order[p + 1]); } }
 
     public void _Portal() { if (!sponsoredDetail || IsSponsoredWorldActive(selected)) RequestPortal(selected); }
-    public void _AdPortal() { if (!onlineMode) RequestPortal(adWorld); else if (view == 3 && TopPortalAvailable()) RequestPortal(topWorlds[openedTop]); }
+    public void _AdPortal() { if (!onlineMode) RequestPortal(adWorld); else if (view == 3 && TopPortalAvailable()) RequestPortal(openedTop >= 0 ? topWorlds[openedTop] : adWorlds[openedAd]); }
     private double TimeNow()
     { return Networking.LocalPlayer == null ? Time.timeAsDouble : Networking.GetServerTimeInSeconds(); }
     private float PortalWait()
@@ -1451,6 +1923,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (!ready || !CanUseWorld(i) || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
         localPortalRequestTime = Time.realtimeSinceStartup;
+        QueueStatistics(6);
         if (onlineMode && i >= 64)
         {
             if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _DrawPortalOnOwner(portalIds[i], titles[i]);
@@ -1523,15 +1996,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void RenderFavorites()
     {
-        if (!favoritesEnabled || favoritesPanel == null) return;
+        if (favoritesPanel == null) return;
+        if (!favoritesEnabled) { favoritesPanel.SetActive(false); return; }
         favoritesPanel.SetActive(view == 4);
+        if (view != 4) return;
         int pages = Mathf.Max(1, (favoriteCount + 7) / 8);
         favoritePage = Mathf.Clamp(favoritePage, 0, pages - 1);
         if (favoritePageLabel != null) favoritePageLabel.text = favoriteCount == 0 ? "登録なし" : (favoritePage + 1) + " / " + pages + "  ・  " + favoriteCount + " 件";
         if (favoritePrevious != null) favoritePrevious.interactable = favoritePage > 0;
         if (favoriteNext != null) favoriteNext.interactable = favoritePage + 1 < pages;
         float wait = PortalWait();
-        if (favoriteHelp != null) favoriteHelp.text = favoriteCount == 0 ? "UnityのInspectorでお気に入りワールドを登録してください。" : wait > 0 ? "ポータルの再作成まで あと " + Mathf.CeilToInt(wait) + " 秒" : "ワールドを押すと、共有ポータルが20秒間出現します。";
+        if (favoriteHelp != null) favoriteHelp.text = favoriteCount == 0 ? "お気に入りワールドはまだ登録されていません。" : wait > 0 ? "ポータルの再作成まで あと " + Mathf.CeilToInt(wait) + " 秒" : "ワールドを押すと、共有ポータルが20秒間出現します。";
         if (view == 4) statusLabel.text = "設置者が登録したお気に入りワールド";
         if (favoriteButtons == null) return;
         for (int row = 0; row < favoriteButtons.Length; row++)
@@ -1630,7 +2105,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         nextUiTick = Time.time + 0.2f;
         if (sharedDataSource == null)
         {
-            if (loading && Time.realtimeSinceStartup - lastFeedAttempt > 60f) { loading = false; failed = true; Render(); }
+            if (loading && Time.realtimeSinceStartup - lastFeedAttempt > 60f) { loading = false; failed = true; QueueStatistics(1); Render(); }
             if (pendingDrawTab >= 0 && !drawReadyToCommit && Time.realtimeSinceStartup - drawStartedAt > 90f)
                 FailDraw("抽選の読み込みがタイムアウトしました。再試行できます");
         }
@@ -1644,15 +2119,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 if (sponsorImageLoading) { sponsorImageLoading = false; sponsorImageFailed = true; if (sponsorDownload != null) sponsorDownload.Dispose(); sponsorDownload = null; }
                 else if (imageLoading) { imageLoading = false; imageFailed = true; if (atlasDownload != null) atlasDownload.Dispose(); atlasDownload = null; }
                 else if (pendingDrawTab >= 0 && drawImageRequested && !drawVerifying && !drawReadyToCommit) FailDraw("抽選画像の読み込みがタイムアウトしました");
-                else for (int i = 0; i < 4; i++) if (extraSponsorLoading[i])
+                else for (int i = 0; i < 7; i++) if (extraSponsorLoading[i])
                 { extraSponsorLoading[i] = false; extraSponsorFailed[i] = true; if (extraSponsorDownloads[i] != null) extraSponsorDownloads[i].Dispose(); extraSponsorDownloads[i] = null; }
                 Render();
             }
             TryCommitDraw();
-            if (pendingDrawTab < 0)
+            // Start the initial draw lease after the higher-priority images,
+            // so a slow daily/ad download cannot consume the draw timeout.
+            if (pendingDrawTab < 0 && !InitialImagesPending())
             {
-                if (!initialDrawAttempted[0] && string.IsNullOrEmpty(sharedRecommendedDraw)) RequestDraw(1, true);
-                else if (!initialDrawAttempted[1] && string.IsNullOrEmpty(sharedRandomDraw)) RequestDraw(3, true);
+                if (!initialDrawAttempted[1] && string.IsNullOrEmpty(sharedRandomDraw)) RequestDraw(3, true);
+                else if (!initialDrawAttempted[0] && string.IsNullOrEmpty(sharedRecommendedDraw)) RequestDraw(1, true);
             }
             bool wasLoadingImage = imageRequestInFlight;
             PumpImageDownloads();
@@ -1662,12 +2139,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sharedDataSource == null && ready && onlineMode && sponsorStatusProtocol && (adCount > 0 || placementCount > 0 || topCount > 0))
         {
             bool failedNow = (sponsorStatusLoading && Time.realtimeSinceStartup - sponsorStatusStarted >= 15f) || (sponsorStatusValid && !StatusUsable());
-            if (failedNow) FailSponsorStatus();
+            if (failedNow) { QueueStatistics(3); FailSponsorStatus(); }
             if (Time.realtimeSinceStartup >= nextSponsorStatusAttempt) BeginSponsorStatusDownload();
             if (RefreshSponsorAvailability() || failedNow) Render();
         }
         if (sharedDataSource == null && ready && view != 3 && Time.time >= nextSponsorRotation) BeginSponsorFade();
+        PumpAdClicks(); PumpStatistics();
         if (isSharedDataSource) return;
+        UpdateLoadingIndicators();
+        if (ready && gameObject.activeInHierarchy && topPanel != null && topPanel.transform.parent.gameObject.activeInHierarchy) QueueStatistics(4);
         UpdateDrawUi();
         RenderFavorites();
         int wait = Mathf.CeilToInt(PortalWait());
@@ -1683,21 +2163,30 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         topPanel.SetActive(view == 0); listPanel.SetActive(view == 1); detailPanel.SetActive(view == 2); adPanel.SetActive(view == 3);
         for (int i = 0; i < navImages.Length; i++) navImages[i].color = i == (favoriteTabSelected ? 4 : tab) ? selectedTabColor : cardColor;
         retryButton.gameObject.SetActive((!ready && !loading) || (ready && ((imageFailed && !imageLoading) || (sponsorImageFailed && !sponsorImageLoading) || sponsorStatusFailed || ExtraSponsorImagesFailed())));
-        statusLabel.text = loading ? "NOW LOADING…" : failed ? "情報を取得できません。URL許可を確認して再試行。" : ready ? (imageLoading || sponsorImageLoading || ExtraSponsorImagesLoading() ? "写真を読み込んでいます…" : imageFailed || sponsorImageFailed || ExtraSponsorImagesFailed() ? "写真を取得できません。URL許可を確認して再試行。" : onlineMode ? "入室時の情報を表示しています" : "試作データ: " + revision) : "初期データを待っています…";
+        statusLabel.text = loading ? "読み込み中…" : failed ? "情報を取得できません。URL許可を確認して再試行。" : ready ? (imageLoading || sponsorImageLoading || ExtraSponsorImagesLoading() ? "写真を読み込んでいます…" : imageFailed || sponsorImageFailed || ExtraSponsorImagesFailed() ? "写真を取得できません。URL許可を確認して再試行。" : onlineMode ? "入室時の情報を表示しています" : "サンプル表示") : "初期データを待っています…";
         if (ready && sponsorStatusFailed) statusLabel.text = "スポンサーの掲載確認に失敗しました。再試行できます。";
+        sectionLabel.text = tab == 1 ? "PICKUP WORLDS" : tab == 2 ? "LATEST WORLDS" : "RANDOM DISCOVERY";
+        if (!ready)
+        {
+            pageLabel.text = failed ? "取得失敗" : "読み込み中…";
+            previousPage.interactable = false; nextPage.interactable = false;
+            reshuffleButton.gameObject.SetActive(false);
+        }
         RenderFavorites();
         LayoutDailyCards();
-        for (int k = 0; k < 2; k++)
+        for (int k = 0; view == 0 && !manyVersion && k < 2; k++)
         {
             int i = k == 0 ? dailyOne : secondSlotIsChill ? dailyChill : dailyTwo;
-            topCaptions[k].text = k == 0 ? "今日のランダムワールド" : secondSlotIsChill ? "今日のランダムチルワールド" : "今日のランダムワールド ②";
+            topCaptions[k].text = k == 0 ? "今日のランダムワールド①" : secondSlotIsChill ? "今日のランダムチルワールド" : "今日のランダムワールド②";
             topButtons[k].interactable = ready && i >= 0;
-            topTitles[k].text = !ready ? "読込待ち" : i >= 0 ? titles[i] : "本日の追加紹介はありません";
+            topTitles[k].text = !ready ? (failed ? "読み込みに失敗しました" : "読み込み中") : i >= 0 ? titles[i] : "本日の追加紹介はありません";
             if (topAuthors != null && k < topAuthors.Length && topAuthors[k] != null)
                 topAuthors[k].text = ready && i >= 0 && !string.IsNullOrEmpty(authors[i]) ? "by " + authors[i] : "";
             topSummaries[k].text = ready && i >= 0 ? descriptions[i] : "";
             SetPhoto(topPictures[k], ready ? i : -1);
         }
+        if (view == 1) RenderWorldRows();
+        UpdateLoadingIndicators();
         if (!ready)
         {
             if (sponsorBannerButton != null) sponsorBannerButton.gameObject.SetActive(!onlineMode);
@@ -1706,13 +2195,6 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         sectionLabel.text = tab == 1 ? "PICKUP WORLDS" : tab == 2 ? "LATEST WORLDS" : "RANDOM DISCOVERY";
         reshuffleButton.gameObject.SetActive(tab == 1 || tab == 3);
-        for (int r = 0; r < 4; r++)
-        {
-            int p = page * 4 + r; bool valid = p < orderCount;
-            rows[r].SetActive(valid); rowMap[r] = valid ? order[p] : -1;
-            if (!valid) continue;
-            int i = rowMap[r]; rowTitles[r].text = titles[i]; rowSummaries[r].text = descriptions[i]; SetPhoto(rowPictures[r], i);
-        }
         pageLabel.text = orderCount == 0 ? "掲載準備中" : (page + 1) + " / " + Mathf.CeilToInt(orderCount / 4f);
         previousPage.interactable = page > 0; nextPage.interactable = (page + 1) * 4 < orderCount;
         detailTitle.text = titles[selected].Replace("\r", " ").Replace("\n", " "); detailDescription.text = descriptions[selected]; SetPhoto(detailPicture, selected);
@@ -1725,6 +2207,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int second = secondSlotIsChill ? dailyChill : dailyTwo;
         previousWorld.interactable = sponsoredDetail ? SponsoredPosition() > 0 : tab == 0 ? selected != dailyOne && dailyOne >= 0 : Position() > 0;
         nextWorld.interactable = sponsoredDetail ? SponsoredPosition() + 1 < sponsoredCount : tab == 0 ? selected != second && second >= 0 : Position() >= 0 && Position() + 1 < orderCount;
+        if (manyVersion && tab == 0 && !sponsoredDetail) { previousWorld.interactable = CanStepMany(-1); nextWorld.interactable = CanStepMany(1); }
         returnLabel.text = tab == 0 ? "TOP に戻る" : "一覧に戻る";
         adTitle.text = adName; adDescription.text = adCopy; adSponsor.text = "広告主: " + sponsor;
         bannerTitle.text = adName; SetPhoto(adPicture, adWorld); SetPhoto(bannerPicture, adWorld);
@@ -1747,6 +2230,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void LayoutDailyCards()
     {
+        for (int k = 0; k < topButtons.Length; k++) topButtons[k].gameObject.SetActive(!manyVersion);
+        if (manyButtons != null) for (int k = 0; k < manyButtons.Length; k++) if (manyButtons[k] != null) manyButtons[k].gameObject.SetActive(manyVersion);
+        if (view != 0) return;
+        if (manyVersion)
+        {
+            if (sponsoredWorldPanel != null) sponsoredWorldPanel.SetActive(ready && sponsoredCount > 0);
+            for (int k = 0; k < 2; k++) topButtons[k].gameObject.SetActive(false);
+            RenderMany();
+            return;
+        }
         bool compact = ready && sponsoredCount > 0;
         if (sponsoredWorldPanel != null) sponsoredWorldPanel.SetActive(compact);
         for (int i = 0; i < 2; i++)
@@ -1816,11 +2309,22 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         bool footer = image == bannerPicture;
         float width = bannerAtlasV2 ? 760f : 760f / 6f;
-        Place(image.rectTransform, (760f - width) / 2f, footer ? 0 : 58, width, 760f / 6f);
+        // TOP cards already have a 356-wide image area; do not expand them to
+        // the 760-wide footer/detail coordinates.
+        if (footer || image == adPicture)
+            Place(image.rectTransform, (760f - width) / 2f, footer ? 0 : 58, width, 760f / 6f);
         if (!bannerAtlasV2) { SponsorPhoto(image, adCells[ad]); return; }
         image.texture = adCells[ad] >= 0 ? (adBannerPages[ad] == 0 ? sponsorTexture : extraSponsorTextures[0]) : null;
         image.color = image.texture == null ? new Color(.04f, .12f, .19f, 1) : Color.white;
-        image.uvRect = new Rect(.5f / 2048f, (7 - adBannerRows[ad]) / 8f + .5f / 2048f, .75f - 1f / 2048f, .125f - 1f / 2048f);
+        if (bannerAtlasV3)
+        {
+            // Two columns of 1024x256 blocks: banner at top-left, QR at right.
+            int cell = adBannerRows[ad];
+            image.uvRect = new Rect((cell % 2) * .5f + .5f / 2048f,
+                1f - (cell / 2) * .125f - .0625f + .5f / 2048f,
+                .375f - 1f / 2048f, .0625f - 1f / 2048f);
+        }
+        else image.uvRect = new Rect(.5f / 2048f, (7 - adBannerRows[ad]) / 8f + .5f / 2048f, .75f - 1f / 2048f, .125f - 1f / 2048f);
     }
 
     private void SponsorQr(int ad)
@@ -1828,7 +2332,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!bannerAtlasV2) { SponsorPhoto(sponsorQrPicture, adQrCells[ad]); return; }
         sponsorQrPicture.texture = adQrCells[ad] >= 0 ? (adBannerPages[ad] == 0 ? sponsorTexture : extraSponsorTextures[0]) : null;
         sponsorQrPicture.color = sponsorQrPicture.texture == null ? new Color(.04f, .12f, .19f, 1) : Color.white;
-        sponsorQrPicture.uvRect = new Rect(.75f + .5f / 2048f, (7 - adBannerRows[ad]) / 8f + .5f / 2048f, .125f - 1f / 2048f, .125f - 1f / 2048f);
+        if (bannerAtlasV3)
+        {
+            int cell = adBannerRows[ad];
+            sponsorQrPicture.uvRect = new Rect((cell % 2) * .5f + .375f + .5f / 2048f,
+                (7 - cell / 2) * .125f + .5f / 2048f,
+                .125f - 1f / 2048f, .125f - 1f / 2048f);
+        }
+        else sponsorQrPicture.uvRect = new Rect(.75f + .5f / 2048f, (7 - adBannerRows[ad]) / 8f + .5f / 2048f, .125f - 1f / 2048f, .125f - 1f / 2048f);
     }
 
     private void SponsorDetail(int ad)
@@ -1836,19 +2347,20 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         bool premium = TopPortalAvailable();
         float detailHeight = premium ? 566f : 641.25f;
         int cell = adDetailCells[ad];
-        if (cell >= 0 && cell < 10 && extraSponsorTextures[1 + cell / 4] != null)
+        if (cell >= 0 && cell < 16 && extraSponsorTextures[1 + cell / detailCellsPerPage] != null)
         {
             float detailWidth = detailHeight * 1024f / 864f;
             Place(adPicture.rectTransform, (760f - detailWidth) * .5f, 58, detailWidth, detailHeight);
-            adPicture.texture = extraSponsorTextures[1 + cell / 4]; adPicture.color = Color.white;
-            int local = cell % 4;
-            adPicture.uvRect = new Rect((local % 2) * .5f + .5f / 2048f, (1 - local / 2) * .5f + .5f / 1728f, .5f - 1f / 2048f, .5f - 1f / 1728f);
+            adPicture.texture = extraSponsorTextures[1 + cell / detailCellsPerPage]; adPicture.color = Color.white;
+            int local = cell % detailCellsPerPage;
+            if (detailAtlasV2)
+                adPicture.uvRect = new Rect((local % 3) / 3f + .5f / 2016f, (2 - local / 3) / 3f + .5f / 1701f, 1f / 3f - 1f / 2016f, 1f / 3f - 1f / 1701f);
+            else adPicture.uvRect = new Rect((local % 2) * .5f + .5f / 2048f, (1 - local / 2) * .5f + .5f / 1728f, .5f - 1f / 2048f, .5f - 1f / 1728f);
             return;
         }
-        // Old feeds and a failed detail download keep the correct banner visible.
-        SponsorBanner(adPicture, ad);
-        float width = bannerAtlasV2 ? 760f : 760f / 6f;
-        Place(adPicture.rectTransform, (760f - width) * .5f, 58 + (detailHeight - 760f / 6f) * .5f, width, 760f / 6f);
+        float placeholderWidth = detailHeight * 1024f / 864f;
+        Place(adPicture.rectTransform, (760f - placeholderWidth) * .5f, 58, placeholderWidth, detailHeight);
+        SetPlaceholder(adPicture, cell < 0 || cell >= 16 ? 1 : extraSponsorFailed[1 + cell / detailCellsPerPage] ? 2 : 0);
     }
 
     private void RenderSponsors()
@@ -1859,6 +2371,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             {
                 int world = s == 0 ? sponsorLeft : sponsorRight;
                 sponsoredWorldButtons[s].gameObject.SetActive(world >= 0);
+                if (sponsorGoldFrames != null && s < sponsorGoldFrames.Length && sponsorGoldFrames[s] != null)
+                    sponsorGoldFrames[s].gameObject.SetActive(world >= 0 && topPlacementProtocol && topGoldFrames[world]);
                 if (world >= 0)
                 {
                     RawImage photo = sponsoredWorldPictures[s];
@@ -1866,7 +2380,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                     {
                         sponsoredWorldButtons[s].interactable = IsTopActive(world);
                         sponsoredWorldTitles[s].text = topAdTitles[world];
-                        if (topTypes[world] == 0) { Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,topWorlds[world]); }
+                        if (topImageIndices[world] >= 0)
+                        {
+                            int cell = topImageIndices[world]; int slot = 5 + cell / 8;
+                            Place(photo.rectTransform,8,8,356,133);
+                            if (extraSponsorTextures[slot] == null) SetPlaceholder(photo, extraSponsorFailed[slot] ? 2 : 0);
+                            else { photo.texture = extraSponsorTextures[slot]; photo.color = Color.white; photo.uvRect = new Rect((cell % 2) * .5f, 1f - (cell % 8 / 2 + 1) * .25f, .5f, .25f); }
+                        }
+                        else if (topTypes[world] == 0) { Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,topWorlds[world]); }
                         else { Place(photo.rectTransform,8,8+(133f-356f/6f)*.5f,356,356f/6f); SponsorBanner(photo,topAds[world]); }
                     }
                     else { sponsoredWorldTitles[s].text = titles[world]; Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,world); }
@@ -1875,8 +2396,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         if (sponsorBannerButton != null) { sponsorBannerButton.gameObject.SetActive(!onlineMode || activeAdCount > 0); sponsorBannerButton.interactable = !onlineMode || IsAdActive(currentAd); }
         if (sponsorDisclosure != null) sponsorDisclosure.SetActive(!onlineMode || activeAdCount > 0);
-        if (sponsorLinkHelp != null) sponsorLinkHelp.gameObject.SetActive(activeAdCount > 0);
-        if (activeAdCount == 0)
+        if (sponsorLinkHelp != null) sponsorLinkHelp.gameObject.SetActive(activeAdCount > 0 || (view == 3 && IsAdActive(openedAd)));
+        if (activeAdCount == 0 && !(view == 3 && IsAdActive(openedAd)))
         {
             if (sponsorQrPicture != null) sponsorQrPicture.gameObject.SetActive(false);
             if (sponsorUrlField != null) sponsorUrlField.gameObject.SetActive(false);
@@ -1884,7 +2405,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         int a = view == 3 && IsAdActive(openedAd) ? openedAd : currentAd;
-        bannerTitle.text = adNames[currentAd]; SponsorBanner(bannerPicture, currentAd);
+        if (currentAd >= 0) { bannerTitle.text = adNames[currentAd]; SponsorBanner(bannerPicture, currentAd); }
         adTitle.text = adNames[a]; adDescription.text = adDescriptions[a]; adSponsor.text = "広告主: " + adSponsors[a];
         SponsorDetail(a);
         bool premium = view == 3 && TopPortalAvailable();
@@ -1992,7 +2513,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         atlasTexture = source.atlasTexture; sponsorTexture = source.sponsorTexture;
         imageLoading = source.imageLoading; imageFailed = source.imageFailed;
         sponsorImageLoading = source.sponsorImageLoading; sponsorImageFailed = source.sponsorImageFailed;
-        for (int i = 0; i < 4; i++)
+        for (int i = 0; i < 7; i++)
         {
             if (extraSponsorTextures[i] != source.extraSponsorTextures[i] || extraSponsorLoading[i] != source.extraSponsorLoading[i] || extraSponsorFailed[i] != source.extraSponsorFailed[i]) changed = true;
             extraSponsorTextures[i] = source.extraSponsorTextures[i];
@@ -2013,6 +2534,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         drawCooldownUntil = Time.realtimeSinceStartup + source.SharedRemaining(source.sharedDrawCooldownEnd);
         for (int slot = 0; slot < 2; slot++)
         {
+            if (drawErrors[slot] != source.drawErrors[slot]) { drawErrors[slot] = source.drawErrors[slot]; changed = true; }
             string json = source.committedDrawJson[slot];
             if (string.IsNullOrEmpty(json)) continue;
             if (appliedSharedDrawJson[slot] != json)

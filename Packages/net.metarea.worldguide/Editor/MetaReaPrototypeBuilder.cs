@@ -79,7 +79,7 @@ public static class MetaReaPrototypeBuilder
         Label(cr,"Tagline","Discover Worlds Worth Visiting.",0,111,800,29,18,Muted,TextAnchor.MiddleCenter);
         Label(cr,"AccentLeft","◇",20,24,60,70,45,Cyan,TextAnchor.MiddleCenter);
         Label(cr,"AccentRight","◇",720,24,60,70,45,Cyan,TextAnchor.MiddleCenter);
-        string[] navNames={"TOP\nトップ","おすすめ\nピックアップ","LATEST\n紹介最新順","ランダム\n全てから"};
+        string[] navNames={"TOP\nトップ","おすすめ\nピックアップ","LATEST\n紹介最新順","ランダム\nワールド"};
         string[] navEvents={"_Top","_Recommended","_Latest","_Random"};
         guide.navImages=new Image[4];
         for(int i=0;i<4;i++)guide.navImages[i]=Button(cr,"Navigation "+i,navNames[i],20+i*191,156,185,92,navEvents[i],24).GetComponent<Image>();
@@ -93,7 +93,7 @@ public static class MetaReaPrototypeBuilder
             var b=Button(top,"Daily "+i,"",0,44+i*401,760,388,i==0?"_DailyOne":"_DailyTwo");guide.topButtons[i]=b;
             var r=(RectTransform)b.transform;
             guide.topPictures[i]=Photo(r,"Photo",6,6,748,218);
-            guide.topCaptions[i]=Label(r,"Caption",i==0?"今日のランダムワールド":"今日のランダムワールド ②",20,231,720,32,21,Cyan);
+            guide.topCaptions[i]=Label(r,"Caption",i==0?"今日のランダムワールド①":"今日のランダムワールド②",20,231,720,32,21,Cyan);
             guide.topTitles[i]=Label(r,"Name","読込待ち",20,268,704,51,28,Ink);
             guide.topTitles[i].resizeTextForBestFit=true;guide.topTitles[i].resizeTextMinSize=20;guide.topTitles[i].resizeTextMaxSize=28;
             guide.topSummaries[i]=Label(r,"Summary","",20,322,704,55,21,Muted);
@@ -137,7 +137,7 @@ public static class MetaReaPrototypeBuilder
         guide.returnLabel=Button(detail,"Back","一覧に戻る",0,807,760,50,"_Back",23).GetComponentInChildren<Text>();
 
         var ad=Rect(content,"Advertisement detail",0,0,760,858);guide.adPanel=ad.gameObject;
-        Label(ad,"Disclosure","SPONSORED / 広告",0,0,760,40,22,Muted);
+        Label(ad,"Disclosure","PR",0,0,760,40,22,Muted);
         guide.adPicture=Photo(ad,"Ad photo",0,50,760,428);
         guide.adTitle=Label(ad,"Ad title","",15,493,730,80,31,Ink,TextAnchor.MiddleCenter);
         guide.adDescription=Label(ad,"Ad description","",20,590,720,115,22,Muted,TextAnchor.MiddleCenter);
@@ -147,7 +147,7 @@ public static class MetaReaPrototypeBuilder
         Button(ad,"Ad back","元の画面に戻る",0,823,760,35,"_AdBack",21);
 
         Image(cr,"Ad divider",0,1148,800,2,new Color(.32f,.43f,.51f));
-        Label(cr,"Sponsored","SPONSORED",20,1162,760,28,18,Muted);
+        Label(cr,"Sponsored","PR",20,1162,760,28,18,Muted);
         var banner=Button(cr,"Sponsored banner","",20,1199,760,115,"_Ad");
         guide.bannerPicture=Photo((RectTransform)banner.transform,"Banner image",5,5,202,105);
         guide.bannerTitle=Label((RectTransform)banner.transform,"Title","次に行く世界を、ここから。",227,13,488,50,26,Ink);

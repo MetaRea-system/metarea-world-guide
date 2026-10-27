@@ -8,8 +8,6 @@ using UdonSharpEditor;
 
 public static class MetaReaFavoritesLayout
 {
-    public const string PrefabPath = "Packages/net.metarea.worldguide/Runtime/MetaRea World GUIDE Favorites.prefab";
-
     public static void Apply(MetaReaWallGuide g)
     {
         if (EditorApplication.isPlaying) throw new InvalidOperationException("Stop Play mode first.");
@@ -62,7 +60,7 @@ public static class MetaReaFavoritesLayout
         g.favoritePageLabel.alignment = TextAnchor.MiddleCenter;
         g.favoritePrevious = Button(panel, "Previous", "＜", "_FavoritePrevious", g, 596, 0, 76, 48);
         g.favoriteNext = Button(panel, "Next", "＞", "_FavoriteNext", g, 684, 0, 76, 48);
-        g.favoriteHelp = Label(panel, "Help", "UnityのInspectorでお気に入りワールドを登録してください。", g, 0, 49, 760, 30, 19, g.secondaryColor);
+        g.favoriteHelp = Label(panel, "Help", "お気に入りワールドはまだ登録されていません。", g, 0, 49, 760, 30, 19, g.secondaryColor);
         g.favoriteButtons = new Button[8]; g.favoriteTitles = new Text[8]; g.favoriteAuthors = new Text[8];
         for (int i = 0; i < 8; i++)
         {

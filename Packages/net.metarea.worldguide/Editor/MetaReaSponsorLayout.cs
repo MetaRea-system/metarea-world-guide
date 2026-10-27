@@ -17,9 +17,10 @@ public static class MetaReaSponsorLayout
         var udon = UdonSharpEditorUtility.GetBackingUdonBehaviour(g);
         var panel = Rect(g.topPanel.transform,"Sponsored worlds",0,585,760,270);
         g.sponsoredWorldPanel = panel.gameObject;
-        Label(panel,"Heading","SPONSORED / スポンサー広告",0,0,760,32,21,muted);
+        Label(panel,"Heading","PR",0,0,760,32,21,muted);
         g.sponsoredWorldButtons = new Button[2]; g.sponsoredWorldPictures = new RawImage[2]; g.sponsoredWorldTitles = new Text[2];
         g.sponsorWorldFades = new CanvasGroup[2];
+        g.sponsorGoldFrames = new Image[2];
         for(int i=0;i<2;i++)
         {
             var card=Rect(panel,"Sponsor world "+i,i*388,38,372,220);
@@ -34,6 +35,16 @@ public static class MetaReaSponsorLayout
             g.sponsoredWorldTitles[i].resizeTextForBestFit=true;
             g.sponsoredWorldTitles[i].resizeTextMinSize=20;
             g.sponsoredWorldTitles[i].resizeTextMaxSize=24;
+            var frame = Rect(card,"Gold frame",0,0,372,220);
+            var frameImage = frame.GetComponent<Image>() ?? frame.gameObject.AddComponent<Image>();
+            frameImage.color = Color.clear; frameImage.raycastTarget = false;
+            for (int edge=0; edge<4; edge++)
+            {
+                var border=Rect(frame,"Edge "+edge,edge==3?369:0,edge==1?217:0,edge<2?372:3,edge<2?3:220);
+                var edgeImage=border.GetComponent<Image>() ?? border.gameObject.AddComponent<Image>();
+                edgeImage.color=new Color(.9f,.68f,.23f); edgeImage.raycastTarget=false;
+            }
+            g.sponsorGoldFrames[i]=frameImage; frame.gameObject.SetActive(false);
         }
         panel.gameObject.SetActive(false);
         Place(g.adPicture.rectTransform,0,58,760,641.25f);

@@ -58,7 +58,7 @@ public static class MetaReaSharedDataSetup
             if (sources.Length > 1) throw new BuildFailedException("MetaRea: 共通データ管理オブジェクトが重複しています。1つにしてください。");
             var first = displays[0];
             foreach (var display in displays)
-                if (display.onlineMode != first.onlineMode || display.feedUrl.Get() != first.feedUrl.Get() || display.recommendedDrawUrl.Get() != first.recommendedDrawUrl.Get() || display.randomDrawUrl.Get() != first.randomDrawUrl.Get())
+                if (display.onlineMode != first.onlineMode || MetaReaOnlineSetup.VersionedFeedUrl(display.feedUrl.Get()) != MetaReaOnlineSetup.VersionedFeedUrl(first.feedUrl.Get()) || display.recommendedDrawUrl.Get() != first.recommendedDrawUrl.Get() || display.randomDrawUrl.Get() != first.randomDrawUrl.Get())
                     throw new BuildFailedException("MetaRea: 同じシーンのボードには同じ配信設定を使用してください。");
             var source = sources.FirstOrDefault();
             bool changed = source == null;
@@ -75,7 +75,11 @@ public static class MetaReaSharedDataSetup
             source.sharedDataSource = null;
             source.sharedDisplays = displays;
             source.onlineMode = first.onlineMode;
-            source.feedUrl = first.feedUrl;
+            source.feedUrl = new VRC.SDKBase.VRCUrl(MetaReaOnlineSetup.VersionedFeedUrl(first.feedUrl.Get()));
+            source.anonymousStatistics = displays.All(g => g.anonymousStatistics);
+            source.statisticsUrls = MetaReaOnlineSetup.StatisticsUrls(first.feedUrl.Get());
+            source.detailTrackingUrls = source.anonymousStatistics ? MetaReaOnlineSetup.DetailTrackingUrls(first.feedUrl.Get()) : new VRC.SDKBase.VRCUrl[0];
+            source.clickUrls = source.anonymousStatistics ? MetaReaOnlineSetup.ClickUrls(first.feedUrl.Get()) : new VRC.SDKBase.VRCUrl[0];
             source.sponsorStatusUrl = first.sponsorStatusUrl;
             source.recommendedDrawUrl = first.recommendedDrawUrl;
             source.randomDrawUrl = first.randomDrawUrl;
@@ -83,6 +87,8 @@ public static class MetaReaSharedDataSetup
             source.sponsorAtlasUrls = first.sponsorAtlasUrls;
             source.sponsorExtraAtlasUrls = first.sponsorExtraAtlasUrls;
             source.sponsorDetailAtlasUrls = first.sponsorDetailAtlasUrls;
+            source.sponsorTopAtlasUrls = first.sponsorTopAtlasUrls;
+            MetaReaOnlineSetup.EnsureSponsorUrls(source, first.feedUrl.Get());
             source.drawAtlasUrls = first.drawAtlasUrls;
             source.sampleFeed = first.sampleFeed;
             source.sponsorRotationSeconds = first.sponsorRotationSeconds;
