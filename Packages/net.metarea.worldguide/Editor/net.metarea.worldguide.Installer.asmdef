@@ -1,0 +1,6 @@
+{
+  "name": "net.metarea.worldguide.Installer",
+  "references": [],
+  "includePlatforms": ["Editor"],
+  "autoReferenced": true
+}

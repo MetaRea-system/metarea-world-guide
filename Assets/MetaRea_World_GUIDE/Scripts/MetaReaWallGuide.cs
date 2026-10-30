@@ -1660,14 +1660,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (url == null || string.IsNullOrEmpty(url.Get()) || drawAtlasUrls == null || drawAtlasUrls.Length == 0)
         { drawErrors[slot] = "抽選URLが未設定です。最新版を設定してください"; Render(); return; }
         pendingDrawTab = targetTab; pendingDrawAtlas = -1; pendingDrawJson = ""; pendingDrawGeneration = "";
-        drawStartedAt = Time.realtimeSinceStartup; if (!initial) drawCooldownUntil = drawStartedAt + 30f;
+        drawStartedAt = Time.realtimeSinceStartup; if (!initial) drawCooldownUntil = drawStartedAt + 15f;
         drawLoadingMetadata = true; drawImageRequested = false; drawVerifying = false; drawReadyToCommit = false;
         drawErrors[slot] = "";
         receivingSharedDraw = false; sharedImageUnavailable = false;
         if (isSharedDataSource)
         {
             sharedDrawBusyTab = targetTab; sharedDrawBusyEnd = TimeNow() + 90;
-            if (!initial) sharedDrawCooldownEnd = TimeNow() + 30;
+            if (!initial) sharedDrawCooldownEnd = TimeNow() + 15;
             RequestSerialization();
         }
         drawRequestCount++;
@@ -1770,14 +1770,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (isSharedDataSource && !receivingSharedDraw && (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)))
         {
             sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0;
-            sharedDrawCooldownEnd = TimeNow() + 5; RequestSerialization();
+            sharedDrawCooldownEnd = TimeNow() + 15; RequestSerialization();
         }
         drawErrors[pendingDrawTab == 1 ? 0 : 1] = message;
         if (drawImageRequested && !drawVerifying && !drawReadyToCommit) imageRequestInFlight = false;
         if (pendingDrawDownload != null) { pendingDrawDownload.Dispose(); pendingDrawDownload = null; }
         pendingDrawTexture = null; pendingDrawJson = ""; pendingDrawTab = -1; pendingDrawAtlas = -1;
         drawLoadingMetadata = false; drawImageRequested = false; drawVerifying = false; drawReadyToCommit = false;
-        drawCooldownUntil = Time.realtimeSinceStartup + 5f;
+        drawCooldownUntil = Time.realtimeSinceStartup + 15f;
         Render();
     }
 

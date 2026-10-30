@@ -29,6 +29,7 @@ public static class MetaReaOnlineSetup
         return cachedClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/feed-v2";
+    public const string GuideVersion = "0.9.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -36,9 +37,7 @@ public static class MetaReaOnlineSetup
     public static string VersionedFeedUrl(string url)
     {
         if (url != FeedEndpoint && !IsVersionedOfficialFeed(url)) return url;
-        var package = UnityEditor.PackageManager.PackageInfo.FindForAssetPath("Packages/net.metarea.worldguide");
-        if (package == null || string.IsNullOrEmpty(package.version)) return url;
-        return FeedEndpoint + "?version=" + Uri.EscapeDataString(package.version) + "&topImage=1&bannerLayout=3&detailLayout=2";
+        return FeedEndpoint + "?version=" + GuideVersion + "&topImage=1&bannerLayout=3&detailLayout=2";
     }
 
     static bool IsVersionedOfficialFeed(string url)

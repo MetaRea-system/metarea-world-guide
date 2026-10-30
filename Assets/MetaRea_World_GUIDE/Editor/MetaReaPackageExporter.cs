@@ -5,7 +5,7 @@ using UdonSharp;
 
 public static class MetaReaPackageExporter
 {
-    [MenuItem("MetaRea/配布パッケージを書き出す（MetaReaのみ）")]
+    // Developer utility. Public distribution is through VCC only.
     public static void Export()
     {
         if (EditorApplication.isPlaying) throw new InvalidOperationException("Stop Play mode first.");

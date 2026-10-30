@@ -6,7 +6,7 @@ using UnityEngine.UI;
 // Editor preview content is intentionally generic. Runtime data always replaces it.
 public static class MetaReaPlaceholderLayout
 {
-    public const string Root = "Packages/net.metarea.worldguide/Runtime/UI/Placeholders/";
+    public const string Root = "Assets/MetaRea_World_GUIDE/UI/Placeholders/";
     static Texture Load(string name) => AssetDatabase.LoadAssetAtPath<Texture2D>(Root + name + ".png");
 
     public static void Apply(MetaReaWallGuide g)

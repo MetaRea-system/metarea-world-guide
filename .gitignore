@@ -62,3 +62,8 @@ crashlytics-build.properties
 Assets/PackageMakerWindowData.asset*
 .idea
 .vscode
+
+# Generated VCC payload and local install bookkeeping (the source is in Assets).
+/Packages/net.metarea.worldguide/Payload~/
+/ProjectSettings/MetaReaWorldGuideInstall.json*
+/MetaReaWorldGuideBackups/

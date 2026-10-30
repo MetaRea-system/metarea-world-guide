@@ -15,7 +15,7 @@ using Newtonsoft.Json.Linq;
 
 public static class MetaReaPrototypeBuilder
 {
-    public const string Root = "Packages/net.metarea.worldguide/Runtime";
+    public const string Root = "Assets/MetaRea_World_GUIDE";
     public const string ScenePath = Root + "/Scenes/MetaReaPrototype.unity";
     static Font font;
     static MetaReaWallGuide guide;
@@ -39,8 +39,8 @@ public static class MetaReaPrototypeBuilder
         Directory.CreateDirectory(Root+"/Prefabs");
         if (!File.Exists(ScenePath) && !EditorSceneManager.SaveScene(original,ScenePath,true)) throw new Exception("Cannot copy source scene.");
         var scene=EditorSceneManager.OpenScene(ScenePath,OpenSceneMode.Single);
-        var program=AssetDatabase.LoadAssetAtPath<UdonSharpProgramAsset>(Root+"/Runtime/MetaReaWallGuide.asset");
-        if(program==null){program=ScriptableObject.CreateInstance<UdonSharpProgramAsset>();program.sourceCsScript=AssetDatabase.LoadAssetAtPath<MonoScript>(Root+"/Runtime/MetaReaWallGuide.cs");AssetDatabase.CreateAsset(program,Root+"/Runtime/MetaReaWallGuide.asset");AssetDatabase.SaveAssets();}
+        var program=AssetDatabase.LoadAssetAtPath<UdonSharpProgramAsset>(Root+"/Scripts/MetaReaWallGuide.asset");
+        if(program==null){program=ScriptableObject.CreateInstance<UdonSharpProgramAsset>();program.sourceCsScript=AssetDatabase.LoadAssetAtPath<MonoScript>(Root+"/Scripts/MetaReaWallGuide.cs");AssetDatabase.CreateAsset(program,Root+"/Scripts/MetaReaWallGuide.asset");AssetDatabase.SaveAssets();}
         UdonSharpProgramAsset.CompileAllCsPrograms(true);
         if (UdonSharpProgramAsset.AnyUdonSharpScriptHasError()) throw new Exception("Resolve Udon compile errors before creating the scene.");
         font=AssetDatabase.LoadAssetAtPath<Font>(Root+"/Fonts/NotoSansCJKjp-Regular.otf");

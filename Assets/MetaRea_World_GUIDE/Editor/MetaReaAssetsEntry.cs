@@ -4,15 +4,15 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 
-// A small variant is the user-facing entry point. Its source and dependencies
-// remain in the VCC package so upgrades do not duplicate scripts or reset edits.
+// The root variant is the user-facing entry point. Its source and every
+// dependency also live under Assets/MetaRea_World_GUIDE.
 [InitializeOnLoad]
 public static class MetaReaAssetsEntry
 {
     public const string Folder = "Assets/MetaRea_World_GUIDE";
     const string LegacyFolder = "Assets/MetaRea World GUIDE";
     public const string PrefabPath = Folder + "/MetaRea World GUIDE.prefab";
-    public const string SourcePath = "Packages/net.metarea.worldguide/Runtime/MetaRea World GUIDE.prefab";
+    public const string SourcePath = "Assets/MetaRea_World_GUIDE/Internal/MetaRea World GUIDE.prefab";
     static bool queued;
 
     static MetaReaAssetsEntry() { Schedule(); }
@@ -80,17 +80,6 @@ public static class MetaReaAssetsEntry
         string docs = Folder + "/Documentation";
         if (!AssetDatabase.IsValidFolder(docs))
             AssetDatabase.CreateFolder(Folder, "Documentation");
-        CopyDocument("Packages/net.metarea.worldguide/Runtime/README.txt", Folder + "/README.txt");
-        CopyDocument("Packages/net.metarea.worldguide/Runtime/Documentation/スポンサー広告サンプル.txt",
-            docs + "/スポンサー広告サンプル.txt");
-    }
-
-    static void CopyDocument(string source, string destination)
-    {
-        // Keep existing user edits. No .meta is copied from the package.
-        if (File.Exists(destination) || !File.Exists(source)) return;
-        File.Copy(source, destination);
-        AssetDatabase.ImportAsset(destination);
     }
     public static bool EnsureEntry(bool revealCreated)
     {

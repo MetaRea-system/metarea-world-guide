@@ -50,8 +50,10 @@ jobs:
       - name: Set Environment Variables
         run: |
           echo "zipFile=${{ vars.PACKAGE_NAME }}-${{ steps.version.outputs.value }}".zip >> $GITHUB_ENV
-          echo "unityPackage=${{ vars.PACKAGE_NAME }}-${{ steps.version.outputs.value }}.unitypackage" >> $GITHUB_ENV
           echo "version=${{ steps.version.outputs.value }}" >> $GITHUB_ENV
+
+      - name: Build Assets payload for VCC
+        run: python3 ci/build_vcc_payload.py
 
       - name: Reject scene files in the distributable package
         working-directory: "${{ env.packagePath }}"
@@ -66,17 +68,6 @@ jobs:
         working-directory: "${{ env.packagePath }}"
         run: zip -r "${{ github.workspace }}/${{ env.zipFile }}" .
       
-      # Build a list of .meta files for future use
-      - name: Track Package Meta Files
-        run: find "${{ env.packagePath }}/" -name \*.meta >> metaList
-      
-      # Make a UnityPackage version of the Package for release
-      - name: Create UnityPackage
-        uses: pCYSl5EDgo/create-unitypackage@v1.2.3
-        with:
-          package-path: ${{ env.unityPackage }}
-          include-files: metaList
-      
       # Make a release tag of the version from the package.json file 
       - name: Create Tag
         id: tag_version
@@ -90,6 +81,5 @@ jobs:
         with:
           files: |
             ${{ env.zipFile }}
-            ${{ env.unityPackage }}
             ${{ env.packagePath }}/package.json
           tag_name: ${{ env.version }}
