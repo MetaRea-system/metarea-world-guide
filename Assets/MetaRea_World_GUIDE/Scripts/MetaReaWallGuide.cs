@@ -669,6 +669,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
 
     private int v3LatestCount;
+    private int[] v3ListCounts = new int[3];
     private bool v3LatestComplete;
     private string v3LatestJson = "";
 
@@ -1728,6 +1729,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int slot = tab == 1 ? 0 : 1;
         bool waiting = !ready ? !failed : drawTab && !drawHasResult[slot] && string.IsNullOrEmpty(drawErrors[slot]);
         bool loadFailed = !ready ? failed : drawTab && !string.IsNullOrEmpty(drawErrors[slot]);
+        if (ready && guideV3 && onlineMode && page * 4 >= orderCount && page * 4 < PageItemCount()) waiting = !loadFailed;
         for (int r = 0; r < 4; r++)
         {
             int p = page * 4 + r;
@@ -2060,7 +2062,21 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _Random() { SetTab(3); }
     public void _Reshuffle() { if (!ready) return; if (onlineMode) BeginDraw(); else { BuildOrder(); page = 0; Render(); } }
     public void _PreviousPage() { if (page > 0) page--; Render(); }
-    public void _NextPage() { if ((page + 1) * 4 < orderCount) page++; Render(); }
+    public void _NextPage() { if ((page + 1) * 4 < PageItemCount()) page++; Render(); }
+
+    private int PageItemCount()
+    {
+        if (!guideV3 || !onlineMode || tab < 1 || tab > 3) return orderCount;
+        int category = tab == 1 ? 0 : tab == 3 ? 1 : 2;
+        bool complete = category == 2 ? v3LatestComplete : v3DrawComplete[category];
+        return complete ? orderCount : Mathf.Max(orderCount,v3ListCounts[category]);
+    }
+
+    private int V3InitialCount(DataDictionary d, string field, DataList initial)
+    {
+        int fallback = initial.Count < 8 ? initial.Count : 64;
+        return Mathf.Clamp(Integer(d,field,fallback),initial.Count,64);
+    }
     public void _DailyOne() { Open(dailyOne); }
     public void _DailyTwo() { Open(secondSlotIsChill ? dailyChill : dailyTwo); }
     public void _Row0() { Open(rowMap[0]); }
@@ -2368,8 +2384,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         sectionLabel.text = tab == 1 ? "PICKUP WORLDS" : tab == 2 ? "LATEST WORLDS" : "RANDOM DISCOVERY";
         reshuffleButton.gameObject.SetActive(tab == 1 || tab == 3);
-        pageLabel.text = orderCount == 0 ? "掲載準備中" : (page + 1) + " / " + Mathf.CeilToInt(orderCount / 4f);
-        previousPage.interactable = page > 0; nextPage.interactable = (page + 1) * 4 < orderCount;
+        int pageItems = PageItemCount();
+        pageLabel.text = pageItems == 0 ? "掲載準備中" : (page + 1) + " / " + Mathf.CeilToInt(pageItems / 4f);
+        previousPage.interactable = page > 0; nextPage.interactable = (page + 1) * 4 < pageItems;
         detailTitle.text = titles[selected].Replace("\r", " ").Replace("\n", " "); detailDescription.text = descriptions[selected]; SetPhoto(detailPicture, selected);
         if (detailAuthor != null) detailAuthor.text = string.IsNullOrEmpty(authors[selected]) ? "" : "by " + authors[selected];
         bool supported = pc[selected];
@@ -2920,7 +2937,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         for (int i = 0; i < worlds.Count; i++) v3WorldImages[i] = V3Object(worlds[i].DataDictionary,"image");
         V3RememberInitial(worlds); V3RememberInitial(V3List(d,"latestInitial"));
         V3RememberInitial(V3List(d,"recommendedInitial")); V3RememberInitial(V3List(d,"randomInitial"));
-        V3ApplyWorlds(2,V3List(d,"latestInitial"),bank,generation,0,false,0);
+        V3ApplyWorlds(2,V3List(d,"latestInitial"),bank,generation,0,false,V3InitialCount(d,"latestCount",V3List(d,"latestInitial")));
         DataList ads = V3List(d,"ads");
         for (int i = 0; ads != null && i < ads.Count; i++)
         {
@@ -2944,7 +2961,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             v3DrawComplete[c] = false; v3LocalDrawJson[c] = "";
             v3DrawGenerations[c] = ""; v3DrawBanks[c] = -1; v3DrawSets[c] = -1;
             if (V3SharedGeneration(c) == generation && V3SharedBank(c) == bank && V3SharedSet(c) == 0)
-                V3ApplyWorlds(c,V3List(d,c == 0 ? "recommendedInitial" : "randomInitial"),bank,generation,0,false,0);
+                V3ApplyWorlds(c,V3List(d,c == 0 ? "recommendedInitial" : "randomInitial"),bank,generation,0,false,V3InitialCount(d,c == 0 ? "recommendedCount" : "randomCount",V3List(d,c == 0 ? "recommendedInitial" : "randomInitial")));
         }
         imageFailed = false; imageLoading = V3Texture(bank,generation,0) == null;
         v3NextStatus = 0; sponsorStatusValid = false;
@@ -2954,6 +2971,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3ApplyWorlds(int category, DataList list, int bank, string generation, int set, bool complete, int total)
     {
+        bool sameSelection = category == 2 ? complete && !v3LatestComplete : v3DrawGenerations[category] == generation && v3DrawBanks[category] == bank && v3DrawSets[category] == set;
+        v3ListCounts[category] = complete ? list.Count : Mathf.Clamp(total,list.Count,64);
         int start = 64 + category * 64;
         for (int i = 0; i < 64; i++)
         {
@@ -2970,7 +2989,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (category == 2)
         {
             v3LatestCount = list.Count; v3LatestComplete = complete; cachedTabs[2] = false;
-            if (tab == 2) { page = 0; BuildOrder(); }
+            if (tab == 2) { if (!sameSelection) page = 0; BuildOrder(); page = Mathf.Clamp(page,0,Mathf.Max(0,(PageItemCount()-1)/4)); }
             return;
         }
         v3DrawGenerations[category] = generation; v3DrawBanks[category] = bank; v3DrawSets[category] = set;
@@ -2978,7 +2997,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         drawHasResult[category] = true; drawErrors[category] = "";
         int targetTab = category == 0 ? 1 : 3;
         cachedTabs[targetTab] = false;
-        if (tab == targetTab) { page = 0; BuildOrder(); }
+        if (tab == targetTab) { if (!sameSelection) page = 0; BuildOrder(); page = Mathf.Clamp(page,0,Mathf.Max(0,(PageItemCount()-1)/4)); }
     }
 
     private int V3CacheSlot(string token)
