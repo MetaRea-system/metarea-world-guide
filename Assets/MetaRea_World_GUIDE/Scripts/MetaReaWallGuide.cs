@@ -570,6 +570,108 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool imageRequestInFlight;
     private Text reshuffleLabel;
 
+    [HideInInspector] public bool guideV3;
+    [HideInInspector] public VRCUrl[] v3ManifestUrls;
+    [HideInInspector] public VRCUrl[] v3SetUrls;
+    [HideInInspector] public VRCUrl[] v3LatestUrls;
+    [HideInInspector] public VRCUrl[] v3ImageUrls;
+    [UdonSynced] public string v3SharedBaseGeneration = "";
+    [UdonSynced] public int v3SharedBaseBank = -1;
+    [UdonSynced] public string v3SharedRecommendedGeneration = "";
+    [UdonSynced] public int v3SharedRecommendedBank = -1;
+    [UdonSynced] public int v3SharedRecommendedSet;
+    [UdonSynced] public int v3SharedRecommendedUsed = 1;
+    [UdonSynced] public string v3SharedRandomGeneration = "";
+    [UdonSynced] public int v3SharedRandomBank = -1;
+    [UdonSynced] public int v3SharedRandomSet;
+    [UdonSynced] public int v3SharedRandomUsed = 1;
+    [UdonSynced] public int v3OwnerTerm;
+    [UdonSynced] public int v3SelectionSequence;
+
+    // Network state contains identifiers only. Every client verifies content and
+    // publication status directly; an owner cannot authorize an advertisement.
+    private string v3Bootstrap = "";
+    private string v3BaseGeneration = "";
+    private int v3BaseBank = -1;
+    private string[] v3DrawGenerations = new string[2];
+    private int[] v3DrawBanks = new int[] { -1, -1 };
+    private int[] v3DrawSets = new int[] { -1, -1 };
+    private string[] v3LocalDrawJson = new string[2];
+    private bool[] v3DrawComplete = new bool[2];
+    private DataDictionary[] v3WorldImages = new DataDictionary[256];
+    private DataDictionary[] v3InitialImages = new DataDictionary[256];
+    private string[] v3InitialWorldIds = new string[256];
+    private int v3InitialWorldCount;
+    private DataDictionary[] v3BannerImages = new DataDictionary[16];
+    private DataDictionary[] v3QrImages = new DataDictionary[16];
+    private DataDictionary[] v3DetailImages = new DataDictionary[16];
+    private DataDictionary[] v3TopImages = new DataDictionary[16];
+    private string[] v3InitialTopIds = new string[0];
+    private string[] v3InitialBannerIds = new string[0];
+    private int v3AdRotation;
+    private int v3Version;
+    private int v3DisplayVersion = -1;
+
+    // There are only 32 possible image locations per bank. Definitions do not
+    // allocate textures. The resident GPU cache has an independent hard limit.
+    private DataDictionary[] v3Assets = new DataDictionary[1024];
+    private string[] v3AssetGenerations = new string[1024];
+    private int[] v3ImageAttempts = new int[1024];
+    private float[] v3ImageRetryAt = new float[1024];
+    private string[] v3BankGenerations = new string[32];
+    private double[] v3BankExpiry = new double[32];
+    private string[] v3CacheTokens = new string[12];
+    private Texture2D[] v3CacheTextures = new Texture2D[12];
+    private IVRCImageDownload[] v3CacheDownloads = new IVRCImageDownload[12];
+    private float[] v3CacheUsed = new float[12];
+    private int v3ImageKey = -1;
+    private IVRCImageDownload v3ImageDownload;
+    private Texture2D v3ImageTexture;
+    private bool v3Verifying;
+    private Color32[] v3MarkerPixels;
+    private string v3ImageToken = "";
+
+    // At most one metadata request is issued at a time, including status.
+    private VRCUrl v3RequestUrl;
+    private int v3RequestKind; // 1 bootstrap, 2 catalog, 3 set, 4 status
+    private int v3RequestBank = -1;
+    private string v3RequestGeneration = "";
+    private int v3RequestCategory;
+    private int v3RequestSet;
+    private int v3RequestAttempts;
+    private float v3RequestStarted;
+    private float v3RequestRetryAt;
+    private bool v3RequestInFlight;
+    private float v3NextStringAt;
+    private bool v3BootstrapStopped;
+    private string v3BootstrapAttemptGeneration = "";
+    private bool v3StatusStopped;
+    private float v3NextStatus;
+    private double v3ServerTime;
+    private float v3ServerReceived;
+    private double v3StatusUntil;
+    private string[] v3BlockedWorldIds = new string[0];
+    private int v3LatestBank = -1;
+    private string v3LatestGeneration = "";
+
+    private int v3DrawCategory = -1;
+    private int v3TargetBank = -1;
+    private string v3TargetGeneration = "";
+    private int v3TargetSet;
+    private string v3PendingJson = "";
+    private bool v3UserDraw;
+    private bool v3AwaitCatalog;
+    private int v3DrawOwnerTerm;
+    private int v3DrawSequence;
+    private float v3DrawDeadline;
+    private string[] v3StoppedSelections = new string[2];
+    private float v3NextMigrationAttempt;
+
+
+    private int v3LatestCount;
+    private bool v3LatestComplete;
+    private string v3LatestJson = "";
+
     private void Start()
     {
         nextStatisticsSend = Time.realtimeSinceStartup + 60f;
@@ -594,6 +696,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public void _Initialize()
     {
+        if (guideV3 && onlineMode) { V3Initialize(); return; }
         if (sharedDataSource != null) { PullSharedData(); return; }
         if (!string.IsNullOrEmpty(pinnedSnapshot)) { ApplySnapshot(); return; }
         if (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject))
@@ -631,6 +734,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (IsAdClickResponse(result.Url.Get())) return;
         if (IsStatisticsUrl(result.Url.Get())) return;
+        if (guideV3 && onlineMode) { V3StringSuccess(result); return; }
         if (IsDrawMetadataUrl(result.Url.Get()))
         {
             if (!drawLoadingMetadata || pendingDrawTab < 0 || result.Url.Get() != DrawUrl(pendingDrawTab).Get()) return;
@@ -667,6 +771,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (IsAdClickResponse(result.Url.Get())) return;
         if (IsStatisticsUrl(result.Url.Get())) return;
+        if (guideV3 && onlineMode)
+        { if (v3RequestInFlight && v3RequestUrl != null && result.Url.Get() == v3RequestUrl.Get()) V3RequestFailed(false); return; }
         if (IsDrawMetadataUrl(result.Url.Get()))
         {
             if (drawLoadingMetadata && pendingDrawTab >= 0 && result.Url.Get() == DrawUrl(pendingDrawTab).Get())
@@ -680,6 +786,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public void _Retry()
     {
+        if (guideV3 && onlineMode) { V3Retry(); return; }
         if (sharedDataSource != null) { sharedDataSource._Retry(); return; }
         if (isSharedDataSource) { attemptedSharedDrawJson[0] = ""; attemptedSharedDrawJson[1] = ""; }
         if (!string.IsNullOrEmpty(pinnedSnapshot))
@@ -701,6 +808,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public override void OnDeserialization()
     {
+        if (guideV3 && onlineMode) { if (sharedDataSource == null) V3ReceiveSelection(); else ApplyPortal(); return; }
         if (sharedDataSource == null) ApplySnapshot();
         if (isSharedDataSource) ReceiveSharedDraw();
         else ApplyPortal();
@@ -711,9 +819,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sharedDataSource != null) return;
         if (isSharedDataSource && player.isLocal)
         {
+            if (guideV3) v3OwnerTerm++;
             sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0;
             RequestSerialization();
         }
+        if (guideV3 && onlineMode) { V3Initialize(); return; }
         if (player.isLocal && string.IsNullOrEmpty(pinnedSnapshot))
         { loading = false; SendCustomEventDelayedSeconds(nameof(_Initialize), 1f); }
     }
@@ -750,13 +860,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool Parse(string json)
     {
-        if (string.IsNullOrEmpty(json) || json.Length > 60000) return false;
+        if (string.IsNullOrEmpty(json) || json.Length > (guideV3 ? 300000 : 60000)) return false;
         DataToken root;
         if (!VRCJson.TryDeserializeFromJson(json, out root) || root.TokenType != TokenType.DataDictionary) return false;
         DataDictionary d = root.DataDictionary;
-        if (Str(d, "schema") != "metarea-wall-v1") return false;
+        if (Str(d, "schema") != (guideV3 && onlineMode ? "metarea-guide-v3" : "metarea-wall-v1")) return false;
         int incomingSnapshot = Integer(d, "snapshotIndex", -1);
-        if (onlineMode && (incomingSnapshot < 0 || atlasUrls == null || incomingSnapshot >= atlasUrls.Length)) return false;
+        if (onlineMode && !guideV3 && (incomingSnapshot < 0 || atlasUrls == null || incomingSnapshot >= atlasUrls.Length)) return false;
         DataToken wt;
         if (!d.TryGetValue("worlds", TokenType.DataList, out wt)) return false;
         DataList list = wt.DataList;
@@ -775,7 +885,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             string portal = Str(w, "portalWorldId");
             if (!string.IsNullOrEmpty(portal) && (!portal.StartsWith("wrld_") || portal.Length != 41)) return false;
         }
-        baseWorldCount = n; count = 192;
+        baseWorldCount = n; count = guideV3 && onlineMode ? 256 : 192;
         ids = new string[count]; titles = new string[count]; authors = new string[count]; descriptions = new string[count];
         recommended = new bool[count]; pc = new bool[count]; android = new bool[count]; pictureIndices = new int[count];
         portalIds = new string[count]; sponsorOnly = new bool[count];
@@ -812,7 +922,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         tab = 0; view = favoriteTabSelected ? 4 : 0; page = 0; selected = dailyOne >= 0 ? dailyOne : 0;
         cachedTabs = new bool[4]; cachedPages = new int[4];
         BuildOrder();
-        if (onlineMode) { BeginSponsorStatusDownload(); PumpImageDownloads(); }
+        if (onlineMode && !guideV3) { BeginSponsorStatusDownload(); PumpImageDownloads(); }
         return true;
     }
 
@@ -969,7 +1079,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private bool StatusUsable()
-    { return sponsorStatusValid && Time.realtimeSinceStartup - sponsorStatusReceived < 300f; }
+    { return sponsorStatusValid && (guideV3 && onlineMode ? V3Now() < v3StatusUntil : Time.realtimeSinceStartup - sponsorStatusReceived < 300f); }
 
     private bool InPeriod(double start, double end)
     {
@@ -993,10 +1103,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private bool CanUseWorld(int world)
-    { return world >= 0 && world < count && !string.IsNullOrEmpty(ids[world]) && (!sponsorOnly[world] || IsSponsoredWorldActive(world)); }
+    { return world >= 0 && world < count && !string.IsNullOrEmpty(ids[world]) && (!guideV3 || V3WorldAllowed(world)) && (!sponsorOnly[world] || IsSponsoredWorldActive(world)); }
 
     private void BeginSponsorStatusDownload()
     {
+        if (guideV3 && onlineMode) { if (sharedDataSource == null) v3NextStatus = 0; return; }
         if (sharedDataSource != null) return;
         if (!onlineMode || !ready || sponsorStatusLoading || Time.realtimeSinceStartup - sponsorStatusStarted < 5f) return;
         if (!sponsorStatusProtocol || (adCount == 0 && placementCount == 0 && topCount == 0)) return;
@@ -1031,7 +1142,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool ApplySponsorStatus(string json)
     {
-        if (!ready || !sponsorStatusProtocol || string.IsNullOrEmpty(json) || json.Length > 60000) return false;
+        if (!ready || !sponsorStatusProtocol || string.IsNullOrEmpty(json) || json.Length > (guideV3 ? 300000 : 60000)) return false;
         DataToken token;
         if (!VRCJson.TryDeserializeFromJson(json, out token) || token.TokenType != TokenType.DataDictionary) return false;
         DataDictionary d = token.DataDictionary;
@@ -1158,6 +1269,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void AdvanceSponsors()
     {
+        if (guideV3 && onlineMode) { V3AdvanceSponsors(); return; }
         if (activeAdCount > 0) { if (adCursor >= activeAdCount) { ShuffleAds(); adCursor = 0; } currentAd = adOrder[adCursor++]; }
         else currentAd = -1;
         if (topPlacementProtocol && sponsoredCount > 0)
@@ -1183,6 +1295,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool BannerImageSettled(int ad)
     {
+        if (guideV3 && onlineMode) return ad < 0 || ad >= adCount || V3RefLoaded(v3BannerImages[ad]);
         if (ad < 0 || ad >= adCount || adCells[ad] < 0) return true;
         if (adBannerPages[ad] == 0) return sponsorTexture != null || sponsorImageFailed;
         return extraSponsorTextures[0] != null || extraSponsorFailed[0];
@@ -1190,6 +1303,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool TopImageSettled(int index)
     {
+        if (guideV3 && onlineMode) return V3TopLoaded(index);
         if (index < 0) return true;
         if (!topPlacementProtocol) return atlasTexture != null || imageFailed;
         if (index >= topCount) return true;
@@ -1453,6 +1567,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void PumpImageDownloads()
     {
+        if (guideV3 && onlineMode) { if (sharedDataSource != null) sharedDataSource.V3PumpImages(); else V3PumpImages(); return; }
         if (sharedDataSource != null) { if (sharedDataSource != this) sharedDataSource.PumpImageDownloads(); return; }
         if (!onlineMode || !ready || imageRequestInFlight || drawVerifying || Time.realtimeSinceStartup < nextImageRequestAt) return;
         // A clicked detail wins the next available request; never cancel an
@@ -1469,6 +1584,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public override void OnImageLoadSuccess(IVRCImageDownload result)
     {
         if (IsDetailTrackingResult(result)) return;
+        if (guideV3 && onlineMode) { V3ImageSuccess(result); return; }
         if (result.Url.Get().Contains("/draw-atlas/")) { VerifyDrawImage(result); return; }
         int extraSlot = ExtraSponsorSlot(result.Url.Get());
         if (extraSlot >= 0)
@@ -1503,6 +1619,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public override void OnImageLoadError(IVRCImageDownload result)
     {
         if (IsDetailTrackingResult(result)) return;
+        if (guideV3 && onlineMode) { if (result == v3ImageDownload) V3ImageFailed(); return; }
         if (result.Url.Get().Contains("/draw-atlas/"))
         { if (pendingDrawTab >= 0 && result == pendingDrawDownload) { imageRequestInFlight = false; FailDraw("抽選画像の取得に失敗しました。再試行できます"); } return; }
         int extraSlot = ExtraSponsorSlot(result.Url.Get());
@@ -1534,6 +1651,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void SetPhoto(RawImage image, int worldIndex)
     {
+        if (guideV3 && onlineMode) { V3PaintWorld(image,worldIndex); return; }
         Texture texture = Picture(worldIndex);
         if (texture == null)
         {
@@ -1651,6 +1769,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void RequestDraw(int targetTab, bool initial)
     {
+        if (guideV3 && onlineMode)
+        { if (!initial) { if (sharedDataSource != null) sharedDataSource._RequestSharedDraw(targetTab); else V3BeginDraw(targetTab == 1 ? 0 : 1,true); } return; }
         if (sharedDataSource != null) { if (!initial) sharedDataSource._RequestSharedDraw(targetTab); return; }
         if (isSharedDataSource && Networking.LocalPlayer != null && !Networking.IsOwner(gameObject)) return;
         if (!onlineMode || !ready || (targetTab != 1 && targetTab != 3) || pendingDrawTab >= 0 || (!initial && Time.realtimeSinceStartup < drawCooldownUntil)) return;
@@ -1737,6 +1857,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public override void OnAsyncGpuReadbackComplete(VRCAsyncGPUReadbackRequest request)
     {
+        if (guideV3 && onlineMode) { V3Readback(request); return; }
         if (!drawVerifying || pendingDrawTab < 0) return;
         drawVerifying = false;
         if (request.hasError || !request.TryGetData(drawGenerationPixels) || Time.realtimeSinceStartup >= drawLeaseUntil)
@@ -1833,6 +1954,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void UpdateDrawUi()
     {
+        if (guideV3 && onlineMode) { V3DrawUi(); return; }
         if (isSharedDataSource || !onlineMode || favoriteTabSelected || (tab != 1 && tab != 3)) return;
         int slot = tab == 1 ? 0 : 1;
         int wait = Mathf.Max(0, Mathf.CeilToInt(drawCooldownUntil - Time.realtimeSinceStartup));
@@ -1851,7 +1973,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void BuildOrder()
     {
         order = new int[count]; orderCount = 0;
-        if (onlineMode && (tab == 1 || tab == 3))
+        if (guideV3 && onlineMode && tab == 2)
+        { for (int i = 0; i < v3LatestCount; i++) if (V3WorldAllowed(192+i)) order[orderCount++] = 192+i; }
+        else if (onlineMode && (tab == 1 || tab == 3))
         {
             int slot = tab == 1 ? 0 : 1;
             int start = 64 + slot * 64;
@@ -2151,6 +2275,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sharedDataSource == null) UpdateSponsorFade();
         if (Time.time < nextUiTick) return;
         nextUiTick = Time.time + 0.2f;
+        if (guideV3 && onlineMode) { V3Tick(); return; }
         if (sharedDataSource == null)
         {
             if (loading && Time.realtimeSinceStartup - lastFeedAttempt > 60f) { loading = false; failed = true; QueueStatistics(1); Render(); }
@@ -2361,6 +2486,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         // the 760-wide footer/detail coordinates.
         if (footer || image == adPicture)
             Place(image.rectTransform, (760f - width) / 2f, footer ? 0 : 23, width, 760f / 6f);
+        if (guideV3 && onlineMode) { V3Paint(image,v3BannerImages[ad],v3BaseBank,v3BaseGeneration,false); return; }
         if (!bannerAtlasV2) { SponsorPhoto(image, adCells[ad]); return; }
         image.texture = adCells[ad] >= 0 ? (adBannerPages[ad] == 0 ? sponsorTexture : extraSponsorTextures[0]) : null;
         image.color = image.texture == null ? new Color(.04f, .12f, .19f, 1) : Color.white;
@@ -2377,6 +2503,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void SponsorQr(int ad)
     {
+        if (guideV3 && onlineMode) { V3Paint(sponsorQrPicture,v3QrImages[ad],v3BaseBank,v3BaseGeneration,false); return; }
         if (!bannerAtlasV2) { SponsorPhoto(sponsorQrPicture, adQrCells[ad]); return; }
         sponsorQrPicture.texture = adQrCells[ad] >= 0 ? (adBannerPages[ad] == 0 ? sponsorTexture : extraSponsorTextures[0]) : null;
         sponsorQrPicture.color = sponsorQrPicture.texture == null ? new Color(.04f, .12f, .19f, 1) : Color.white;
@@ -2394,6 +2521,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         bool premium = TopPortalAvailable();
         float detailHeight = premium ? 566f : 641.25f;
+        if (guideV3 && onlineMode)
+        { float width = detailHeight*1024f/864f; Place(adPicture.rectTransform,(760f-width)*.5f,23,width,detailHeight); V3Paint(adPicture,v3DetailImages[ad],v3BaseBank,v3BaseGeneration,false); return; }
         int cell = adDetailCells[ad];
         if (cell >= 0 && cell < 16 && extraSponsorTextures[1 + cell / detailCellsPerPage] != null)
         {
@@ -2428,7 +2557,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                     {
                         sponsoredWorldButtons[s].interactable = IsTopActive(world);
                         sponsoredWorldTitles[s].text = topAdTitles[world];
-                        if (topImageIndices[world] >= 0)
+                        if (guideV3 && onlineMode && topAds[world] >= 0 && v3TopImages[topAds[world]] != null)
+                        { Place(photo.rectTransform,8,8,356,133); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
+                        else if (!guideV3 && topImageIndices[world] >= 0)
                         {
                             int cell = topImageIndices[world]; int slot = 5 + cell / 8;
                             Place(photo.rectTransform,8,8,356,133);
@@ -2492,7 +2623,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     public bool SharedDrawBusy()
-    { return pendingDrawTab >= 0 || (sharedDrawBusyTab >= 0 && SharedRemaining(sharedDrawBusyEnd) > 0); }
+    { return (guideV3 ? v3DrawCategory >= 0 : pendingDrawTab >= 0) || (sharedDrawBusyTab >= 0 && SharedRemaining(sharedDrawBusyEnd) > 0); }
 
     public void _RequestSharedDraw(int targetTab)
     {
@@ -2506,6 +2637,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (!isSharedDataSource || (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject))) return;
         if (!ready || (targetTab != 1 && targetTab != 3) || SharedDrawBusy() || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        if (guideV3 && onlineMode) { V3BeginDraw(targetTab == 1 ? 0 : 1,true); return; }
         RequestDraw(targetTab, false);
     }
 
@@ -2543,6 +2675,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     // Textures alone are shared; downloads and Dispose remain the source's responsibility.
     private void PullSharedData()
     {
+        if (guideV3 && onlineMode) { V3Pull(); return; }
         var source = sharedDataSource;
         if (source == null || !source.isSharedDataSource) return;
         if (!source.ready)
@@ -2630,5 +2763,992 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (!used) { download.Dispose(); retiredDrawDownloads[i] = null; }
         }
     }
+
+
+    private bool V3Owner()
+    { return Networking.LocalPlayer == null || Networking.IsOwner(gameObject); }
+
+    private double V3Now()
+    { return v3ServerTime > 0 ? v3ServerTime + Time.realtimeSinceStartup - v3ServerReceived : 0; }
+
+    private bool V3Hex(string value)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length != 16) return false;
+        for (int i = 0; i < 16; i++) if ("0123456789abcdef".IndexOf(value[i]) < 0) return false;
+        return true;
+    }
+
+    private DataDictionary V3Object(DataDictionary d, string name)
+    { DataToken t; return d != null && d.TryGetValue(name, TokenType.DataDictionary, out t) ? t.DataDictionary : null; }
+
+    private DataList V3List(DataDictionary d, string name)
+    { DataToken t; return d != null && d.TryGetValue(name, TokenType.DataList, out t) ? t.DataList : null; }
+
+    private DataDictionary V3Json(string json, int maxLength)
+    {
+        DataToken t;
+        if (string.IsNullOrEmpty(json) || json.Length > maxLength || !VRCJson.TryDeserializeFromJson(json, out t) || t.TokenType != TokenType.DataDictionary) return null;
+        return t.DataDictionary;
+    }
+
+    private string[] V3Strings(DataList list, int maximum)
+    {
+        if (list == null || list.Count > maximum) return new string[0];
+        string[] values = new string[list.Count];
+        for (int i = 0; i < list.Count; i++)
+        { if (list[i].TokenType != TokenType.String || list[i].String.Length > 128) return new string[0]; values[i] = list[i].String; }
+        return values;
+    }
+
+    private string V3SharedGeneration(int category)
+    { return category == 0 ? v3SharedRecommendedGeneration : v3SharedRandomGeneration; }
+    private int V3SharedBank(int category)
+    { return category == 0 ? v3SharedRecommendedBank : v3SharedRandomBank; }
+    private int V3SharedSet(int category)
+    { return category == 0 ? v3SharedRecommendedSet : v3SharedRandomSet; }
+    private string V3SelectionKey(string generation, int set)
+    { return generation + ":" + set; }
+
+    private bool V3BankUsable(int bank, string generation)
+    {
+        if (bank < 0 || bank >= 32 || !V3Hex(generation)) return false;
+        if (v3BankGenerations[bank] != generation) return false;
+        return v3BankExpiry[bank] == 0 || V3Now() < v3BankExpiry[bank];
+    }
+
+    private bool V3Descriptor(DataDictionary a)
+    {
+        if (a == null) return false;
+        int id = Integer(a, "assetId", -1), w = Integer(a, "width", -1), h = Integer(a, "height", -1);
+        if (id < 0 || id > 31 || w < 64 || w > 2048 || h < 16 || h > 2048 || !V3Hex(Str(a, "imageToken"))) return false;
+        string ext = id == 0 || (id >= 26 && id <= 30) ? "png" : "jpg";
+        if (Str(a, "format") != ext || Str(a, "path") != "images/" + id + "." + ext) return false;
+        DataDictionary m = V3Object(a, "marker");
+        if (m == null) return false;
+        int x = Integer(m,"x",-1), y = Integer(m,"y",-1), mw = Integer(m,"width",-1), mh = Integer(m,"height",-1);
+        return x >= 0 && y >= 0 && mw >= 64 && mw % 64 == 0 && mh >= 1 && x + mw <= w && y + mh <= h;
+    }
+
+    private bool V3RegisterAsset(int bank, string generation, DataDictionary asset)
+    {
+        if (bank < 0 || bank >= 32 || !V3Hex(generation) || !V3Descriptor(asset)) return false;
+        int key = bank * 32 + Integer(asset,"assetId",-1);
+        if (v3Assets[key] == null || Str(v3Assets[key],"imageToken") != Str(asset,"imageToken"))
+        { v3ImageAttempts[key] = 0; v3ImageRetryAt[key] = 0; }
+        v3Assets[key] = asset; v3AssetGenerations[key] = generation;
+        return true;
+    }
+
+    private bool V3RegisterManifest(DataDictionary d)
+    {
+        int bank = Integer(d,"bank",-1);
+        string generation = Str(d,"generationId");
+        DataList assets = V3List(d,"assets");
+        if (Str(d,"schema") != "metarea-guide-v3" || Integer(d,"layoutVersion",-1) != 1 || bank < 0 || bank >= 32 || !V3Hex(generation) || assets == null || assets.Count < 1 || assets.Count > 32) return false;
+        bool[] seen = new bool[32];
+        for (int i = 0; i < assets.Count; i++)
+        {
+            if (assets[i].TokenType != TokenType.DataDictionary || !V3Descriptor(assets[i].DataDictionary)) return false;
+            int id = Integer(assets[i].DataDictionary,"assetId",-1); if (seen[id]) return false; seen[id] = true;
+        }
+        if (!seen[0] || Integer(d,"recommendedSets",-1) != 8 || Integer(d,"randomSets",-1) != 16 || Integer(d,"pageSize",-1) != 4) return false;
+        double server = Number(d,"serverTime"), until = Number(d,"validUntil"), expires = Number(d,"expiresAtUnix");
+        if (server <= 0 || expires < 0 || (expires != 0 && expires <= server)) return false;
+        if (until >= 0 && until <= server) return false;
+        if (v3ServerTime > 0 && server + 120 < V3Now()) return false;
+        for (int i = 0; i < assets.Count; i++) V3RegisterAsset(bank,generation,assets[i].DataDictionary);
+        v3BankGenerations[bank] = generation; v3BankExpiry[bank] = expires;
+        v3ServerTime = server; v3ServerReceived = Time.realtimeSinceStartup;
+        return true;
+    }
+
+    private bool V3RefValid(DataDictionary reference, int bank, string generation)
+    {
+        if (reference == null) return true;
+        int id = Integer(reference,"assetId",-1);
+        if (bank < 0 || bank >= 32 || id < 0 || id > 31) return false;
+        int key = bank * 32 + id;
+        DataDictionary a = v3Assets[key], r = V3Object(reference,"rect");
+        if (a == null || r == null || v3AssetGenerations[key] != generation) return false;
+        int x = Integer(r,"x",-1), y = Integer(r,"y",-1), w = Integer(r,"width",-1), h = Integer(r,"height",-1);
+        if (x < 0 || y < 0 || w < 1 || h < 1 || x+w > Integer(a,"width",0) || y+h > Integer(a,"height",0)) return false;
+        DataDictionary m = V3Object(a,"marker");
+        int mx = Integer(m,"x",0), my = Integer(m,"y",0), mw = Integer(m,"width",0), mh = Integer(m,"height",0);
+        return x+w <= mx || x >= mx+mw || y+h <= my || y >= my+mh;
+    }
+
+    private bool V3WorldsValid(DataList list, int bank, string generation, int maximum)
+    {
+        if (list == null || list.Count > maximum) return false;
+        for (int i = 0; i < list.Count; i++)
+        {
+            if (list[i].TokenType != TokenType.DataDictionary) return false;
+            DataDictionary w = list[i].DataDictionary;
+            if (!ValidWorldId(Str(w,"id")) || string.IsNullOrEmpty(Str(w,"name")) || Str(w,"name").Length > 256 || !V3RefValid(V3Object(w,"image"),bank,generation)) return false;
+            string portal = Str(w,"portalWorldId"); if (!string.IsNullOrEmpty(portal) && !ValidWorldId(portal)) return false;
+            for (int j = 0; j < i; j++) if (Str(list[j].DataDictionary,"id") == Str(w,"id")) return false;
+        }
+        return true;
+    }
+
+    private void V3RememberInitial(DataList worlds)
+    {
+        if (worlds == null) return;
+        for (int i = 0; i < worlds.Count && v3InitialWorldCount < 192; i++)
+        {
+            DataDictionary w = worlds[i].DataDictionary;
+            DataDictionary r = V3Object(w,"image");
+            if (r == null || Integer(r,"assetId",-1) != 0) continue;
+            bool found = false;
+            for (int j = 0; j < v3InitialWorldCount; j++) if (v3InitialWorldIds[j] == Str(w,"id")) found = true;
+            if (found) continue;
+            v3InitialWorldIds[v3InitialWorldCount] = Str(w,"id");
+            v3InitialImages[v3InitialWorldCount++] = r;
+        }
+    }
+
+    private bool V3ApplyBootstrap(string json)
+    {
+        DataDictionary d = V3Json(json,300000);
+        if (d == null || !V3RegisterManifest(d)) return false;
+        int bank = Integer(d,"bank",-1); string generation = Str(d,"generationId");
+        if (!V3WorldsValid(V3List(d,"worlds"),bank,generation,64) || !V3WorldsValid(V3List(d,"latestInitial"),bank,generation,8) || !V3WorldsValid(V3List(d,"recommendedInitial"),bank,generation,8) || !V3WorldsValid(V3List(d,"randomInitial"),bank,generation,8)) return false;
+        if (!Parse(json)) return false;
+        v3Bootstrap = json; v3BaseBank = bank; v3BaseGeneration = generation;
+        v3InitialWorldCount = 0; v3LatestJson = ""; v3LatestComplete = false;
+        DataList worlds = V3List(d,"worlds");
+        for (int i = 0; i < worlds.Count; i++) v3WorldImages[i] = V3Object(worlds[i].DataDictionary,"image");
+        V3RememberInitial(worlds); V3RememberInitial(V3List(d,"latestInitial"));
+        V3RememberInitial(V3List(d,"recommendedInitial")); V3RememberInitial(V3List(d,"randomInitial"));
+        V3ApplyWorlds(2,V3List(d,"latestInitial"),bank,generation,0,false,0);
+        DataList ads = V3List(d,"ads");
+        for (int i = 0; ads != null && i < ads.Count; i++)
+        {
+            if (ads[i].TokenType != TokenType.DataDictionary) continue;
+            DataDictionary a = ads[i].DataDictionary;
+            for (int j = 0; j < adCount; j++) if (adIds[j] == Str(a,"id"))
+            {
+                v3BannerImages[j] = V3Object(a,"bannerImage"); v3QrImages[j] = V3Object(a,"qrImage");
+                v3DetailImages[j] = V3Object(a,"detailImage"); v3TopImages[j] = V3Object(a,"topImage");
+                if (!V3RefValid(v3BannerImages[j],bank,generation)) v3BannerImages[j] = null;
+                if (!V3RefValid(v3QrImages[j],bank,generation)) v3QrImages[j] = null;
+                if (!V3RefValid(v3DetailImages[j],bank,generation)) v3DetailImages[j] = null;
+                if (!V3RefValid(v3TopImages[j],bank,generation)) v3TopImages[j] = null;
+            }
+        }
+        v3InitialTopIds = V3Strings(V3List(d,"initialTopIds"),4);
+        v3InitialBannerIds = V3Strings(V3List(d,"initialBannerIds"),2);
+        v3AdRotation = 0;
+        for (int c = 0; c < 2; c++)
+        {
+            v3DrawComplete[c] = false; v3LocalDrawJson[c] = "";
+            v3DrawGenerations[c] = ""; v3DrawBanks[c] = -1; v3DrawSets[c] = -1;
+            if (V3SharedGeneration(c) == generation && V3SharedBank(c) == bank && V3SharedSet(c) == 0)
+                V3ApplyWorlds(c,V3List(d,c == 0 ? "recommendedInitial" : "randomInitial"),bank,generation,0,false,0);
+        }
+        imageFailed = false; imageLoading = V3Texture(bank,generation,0) == null;
+        v3NextStatus = 0; sponsorStatusValid = false;
+        v3Version++; loading = false; failed = false; Render();
+        return true;
+    }
+
+    private void V3ApplyWorlds(int category, DataList list, int bank, string generation, int set, bool complete, int total)
+    {
+        int start = 64 + category * 64;
+        for (int i = 0; i < 64; i++)
+        {
+            int index = start+i;
+            ids[index] = ""; portalIds[index] = ""; titles[index] = ""; authors[index] = ""; descriptions[index] = "";
+            pc[index] = false; android[index] = false; recommended[index] = false; sponsorOnly[index] = false; pictureIndices[index] = -1; v3WorldImages[index] = null;
+            if (i >= list.Count) continue;
+            DataDictionary w = list[i].DataDictionary;
+            ids[index] = Str(w,"id"); titles[index] = Str(w,"name"); authors[index] = Str(w,"authorName"); descriptions[index] = Str(w,"description");
+            pc[index] = Flag(w,"pc"); android[index] = Flag(w,"android"); recommended[index] = Flag(w,"recommended");
+            portalIds[index] = string.IsNullOrEmpty(Str(w,"portalWorldId")) ? ids[index] : Str(w,"portalWorldId");
+            v3WorldImages[index] = V3Object(w,"image"); pictureIndices[index] = v3WorldImages[index] == null ? -1 : i;
+        }
+        if (category == 2)
+        {
+            v3LatestCount = list.Count; v3LatestComplete = complete; cachedTabs[2] = false;
+            if (tab == 2) { page = 0; BuildOrder(); }
+            return;
+        }
+        v3DrawGenerations[category] = generation; v3DrawBanks[category] = bank; v3DrawSets[category] = set;
+        v3DrawComplete[category] = complete; drawCounts[category] = list.Count; drawTotalCandidates[category] = total > 0 ? total : list.Count;
+        drawHasResult[category] = true; drawErrors[category] = "";
+        int targetTab = category == 0 ? 1 : 3;
+        cachedTabs[targetTab] = false;
+        if (tab == targetTab) { page = 0; BuildOrder(); }
+    }
+
+    private int V3CacheSlot(string token)
+    {
+        if (!V3Hex(token)) return -1;
+        for (int i = 0; i < v3CacheTokens.Length; i++) if (v3CacheTokens[i] == token && v3CacheTextures[i] != null) return i;
+        return -1;
+    }
+
+    private Texture2D V3Texture(int bank, string generation, int asset)
+    {
+        if (sharedDataSource != null && sharedDataSource != this) return sharedDataSource.V3Texture(bank,generation,asset);
+        if (bank < 0 || bank >= 32 || asset < 0 || asset > 31) return null;
+        int key = bank * 32 + asset;
+        if (v3AssetGenerations[key] != generation || v3Assets[key] == null) return null;
+        int slot = V3CacheSlot(Str(v3Assets[key],"imageToken"));
+        if (slot < 0) return null;
+        return v3CacheTextures[slot];
+    }
+
+    private DataDictionary V3WorldRef(int world)
+    {
+        if (world < 0 || world >= count) return null;
+        string generation = V3WorldGeneration(world);
+        if (generation == v3BaseGeneration)
+            for (int i = 0; i < v3InitialWorldCount; i++) if (v3InitialWorldIds[i] == ids[world]) return v3InitialImages[i];
+        return v3WorldImages[world];
+    }
+
+    private Rect V3Uv(DataDictionary reference, Texture texture)
+    {
+        DataDictionary r = V3Object(reference,"rect");
+        if (r == null || texture == null) return new Rect(0,0,1,1);
+        float x = Integer(r,"x",0), y = Integer(r,"y",0), w = Integer(r,"width",1), h = Integer(r,"height",1);
+        return new Rect((x+.5f)/texture.width,(texture.height-y-h+.5f)/texture.height,(w-1)/texture.width,(h-1)/texture.height);
+    }
+
+    private void V3Paint(RawImage image, DataDictionary reference, int bank, string generation, bool crop)
+    {
+        if (image == null) return;
+        int asset = reference == null ? -1 : Integer(reference,"assetId",-1);
+        Texture2D texture = V3Texture(bank,generation,asset);
+        if (texture == null)
+        {
+            int state = reference == null ? 1 : 0;
+            MetaReaWallGuide source = sharedDataSource != null ? sharedDataSource : this;
+            if (bank >= 0 && bank < 32 && asset >= 0 && asset <= 31 && source.v3ImageAttempts[bank*32+asset] >= 4) state = 2;
+            SetPlaceholder(image,state); return;
+        }
+        Rect uv = V3Uv(reference,texture);
+        if (crop)
+        {
+            DataDictionary r = V3Object(reference,"rect");
+            float aspect = (float)Integer(r,"width",1)/Integer(r,"height",1);
+            float target = image.rectTransform.rect.width/Mathf.Max(1,image.rectTransform.rect.height);
+            if (target > aspect) { float h = aspect/target; uv = new Rect(uv.x,uv.y+uv.height*(1-h)/2,uv.width,uv.height*h); }
+            else { float w = target/aspect; uv = new Rect(uv.x+uv.width*(1-w)/2,uv.y,uv.width*w,uv.height); }
+        }
+        image.texture = texture; image.color = Color.white; image.uvRect = uv;
+    }
+
+    private void V3PaintWorld(RawImage image, int world)
+    {
+        if (world < 0 || world >= count) { SetPlaceholder(image,ready ? 1 : failed ? 2 : 0); return; }
+        int category = world < 128 ? 0 : 1;
+        V3Paint(image,V3WorldRef(world),V3WorldBank(world),V3WorldGeneration(world),true);
+    }
+
+    private bool V3ReferenceUses(DataDictionary reference, int bank, string generation, string token)
+    {
+        if (reference == null || bank < 0 || bank >= 32) return false;
+        int id = Integer(reference,"assetId",-1);
+        if (id < 0 || id > 31) return false;
+        int key = bank*32+id;
+        return v3Assets[key] != null && v3AssetGenerations[key] == generation && Str(v3Assets[key],"imageToken") == token;
+    }
+
+    private bool V3DisplayUses(string token)
+    {
+        if (!ready) return false;
+        if (v3BaseBank >= 0)
+        {
+            DataDictionary a = v3Assets[v3BaseBank*32];
+            if (a != null && Str(a,"imageToken") == token) return true;
+        }
+        // Retain all committed world sheets: only one per category, independent
+        // of the number of local boards, and a detail can safely remain open.
+        for (int i = 0; i < count; i++)
+        {
+            int c = i < 128 ? 0 : 1;
+            if (V3ReferenceUses(v3WorldImages[i],V3WorldBank(i),V3WorldGeneration(i),token)) return true;
+        }
+        if (view == 3 && openedAd >= 0 && openedAd < adCount)
+            if (V3ReferenceUses(v3DetailImages[openedAd],v3BaseBank,v3BaseGeneration,token) || V3ReferenceUses(v3QrImages[openedAd],v3BaseBank,v3BaseGeneration,token)) return true;
+        if (currentAd >= 0 && V3ReferenceUses(v3BannerImages[currentAd],v3BaseBank,v3BaseGeneration,token)) return true;
+        for (int n = 0; n < 2; n++)
+        {
+            int t = n == 0 ? sponsorLeft : sponsorRight;
+            if (t >= 0 && t < topCount && topAds[t] >= 0 && V3ReferenceUses(v3TopImages[topAds[t]],v3BaseBank,v3BaseGeneration,token)) return true;
+        }
+        return false;
+    }
+
+    private int V3FreeCacheSlot()
+    {
+        int candidate = -1; float oldest = float.MaxValue;
+        for (int i = 0; i < v3CacheTokens.Length; i++)
+        {
+            if (v3CacheTextures[i] == null) return i;
+            bool used = V3DisplayUses(v3CacheTokens[i]);
+            if (sharedDisplays != null)
+                for (int j = 0; j < sharedDisplays.Length; j++)
+                    if (sharedDisplays[j] != null && sharedDisplays[j].V3DisplayUses(v3CacheTokens[i])) used = true;
+            if (!used && v3CacheUsed[i] < oldest) { oldest = v3CacheUsed[i]; candidate = i; }
+        }
+        return candidate;
+    }
+
+    private bool V3WantImage(int bank, string generation, int id)
+    {
+        if (v3ImageKey >= 0 || imageRequestInFlight || v3Verifying || Time.realtimeSinceStartup < nextImageRequestAt) return false;
+        if (!V3BankUsable(bank,generation) || id < 0 || id > 31) return false;
+        int key = bank*32+id;
+        DataDictionary a = v3Assets[key];
+        if (a == null || v3AssetGenerations[key] != generation || V3CacheSlot(Str(a,"imageToken")) >= 0 || v3ImageAttempts[key] >= 4 || Time.realtimeSinceStartup < v3ImageRetryAt[key]) return false;
+        if (v3ImageUrls == null || key >= v3ImageUrls.Length || VRCUrl.IsNullOrEmpty(v3ImageUrls[key]) || V3FreeCacheSlot() < 0) return false;
+        v3ImageKey = key; v3ImageToken = Str(a,"imageToken");
+        v3ImageAttempts[key]++;
+        if (imageDownloader == null) imageDownloader = new VRCImageDownloader();
+        TextureInfo info = new TextureInfo(); info.GenerateMipMaps = false; info.FilterMode = FilterMode.Bilinear;
+        info.WrapModeU = TextureWrapMode.Clamp; info.WrapModeV = TextureWrapMode.Clamp;
+        MarkImageRequest();
+        v3ImageDownload = imageDownloader.DownloadImage(v3ImageUrls[key],null,(IUdonEventReceiver)this,info);
+        return true;
+    }
+
+    private bool V3WantRef(DataDictionary reference, int bank, string generation)
+    { return reference != null && V3WantImage(bank,generation,Integer(reference,"assetId",-1)); }
+
+    private bool V3WantWorld(int world)
+    {
+        if (world < 0 || world >= count) return false;
+        int c = world < 128 ? 0 : 1;
+        return V3WantRef(V3WorldRef(world),V3WorldBank(world),V3WorldGeneration(world));
+    }
+
+    private bool V3WantDisplay(MetaReaWallGuide display, bool details)
+    {
+        if (display == null || !display.ready || !display.gameObject.activeInHierarchy) return false;
+        if (details)
+        {
+            if (display.view == 3 && display.openedAd >= 0 && display.openedAd < display.adCount)
+            {
+                int ad = display.openedAd;
+                if (V3WantRef(display.v3DetailImages[ad],display.v3BaseBank,display.v3BaseGeneration)) return true;
+                if (V3WantRef(display.v3QrImages[ad],display.v3BaseBank,display.v3BaseGeneration)) return true;
+            }
+            if (display.view == 2)
+            {
+                int w = display.selected;
+                int c = w < 128 ? 0 : 1;
+                return w >= 0 && w < display.count && V3WantRef(display.V3WorldRef(w),display.V3WorldBank(w),display.V3WorldGeneration(w));
+            }
+            return false;
+        }
+        if (display.view == 1)
+            for (int i = 0; i < 4; i++)
+            {
+                int p = display.page*4+i;
+                if (p >= display.orderCount) break;
+                int w = display.order[p], c = w < 128 ? 0 : 1;
+                if (V3WantRef(display.V3WorldRef(w),display.V3WorldBank(w),display.V3WorldGeneration(w))) return true;
+            }
+        if (display.view == 0 && display.manyVersion && display.drawCounts[0] > 0)
+            if (V3WantRef(display.V3WorldRef(64),display.v3DrawBanks[0],display.v3DrawGenerations[0])) return true;
+        return false;
+    }
+
+    private void V3PumpImages()
+    {
+        if (!ready || v3ImageKey >= 0 || imageRequestInFlight || v3Verifying || Time.realtimeSinceStartup < nextImageRequestAt) return;
+        if (V3WantImage(v3BaseBank,v3BaseGeneration,0)) return;
+        if (sharedDisplays != null)
+            for (int i = 0; i < sharedDisplays.Length; i++) if (V3WantDisplay(sharedDisplays[i],true)) return;
+        if (V3WantDisplay(this,true)) return;
+        if (!string.IsNullOrEmpty(v3PendingJson) && v3DrawCategory >= 0)
+        {
+            int asset = v3DrawCategory == 2 ? 1 : v3DrawCategory == 0 ? 2+v3TargetSet : 10+v3TargetSet;
+            if (V3WantImage(v3TargetBank,v3TargetGeneration,asset)) return;
+        }
+        if (sharedDisplays != null)
+            for (int i = 0; i < sharedDisplays.Length; i++) if (V3WantDisplay(sharedDisplays[i],false)) return;
+        if (V3WantDisplay(this,false)) return;
+        // Rotating ads precede passive off-screen world pages. Current and first
+        // next ads are already in asset0, so this cannot delay the first turn.
+        for (int ad = 0; ad < adCount; ad++)
+        {
+            if (!IsAdActive(ad)) continue;
+            if (V3WantRef(v3BannerImages[ad],v3BaseBank,v3BaseGeneration)) return;
+            if (V3WantRef(v3TopImages[ad],v3BaseBank,v3BaseGeneration)) return;
+        }
+        if (V3WantImage(v3BaseBank,v3BaseGeneration,1)) return;
+        if (V3WantImage(v3BaseBank,v3BaseGeneration,31)) return;
+        for (int c = 0; c < 2; c++)
+            if (v3DrawComplete[c] && V3WantImage(v3DrawBanks[c],v3DrawGenerations[c],(c == 0 ? 2 : 10)+v3DrawSets[c])) return;
+        for (int ad = 0; ad < adCount; ad++)
+            if (IsAdActive(ad) && V3WantRef(v3DetailImages[ad],v3BaseBank,v3BaseGeneration)) return;
+    }
+
+    private void V3ImageFailed()
+    {
+        int key = v3ImageKey;
+        if (v3ImageDownload != null) v3ImageDownload.Dispose();
+        v3ImageDownload = null; v3ImageTexture = null; v3Verifying = false;
+        v3ImageKey = -1; imageRequestInFlight = false;
+        if (key >= 0)
+        {
+            v3ImageRetryAt[key] = Time.realtimeSinceStartup + V3Backoff(v3ImageAttempts[key]);
+            if (key == v3BaseBank*32 && v3ImageAttempts[key] >= 4) { imageFailed = true; imageLoading = false; }
+        }
+        v3Version++;
+    }
+
+    private void V3ImageSuccess(IVRCImageDownload result)
+    {
+        if (result != v3ImageDownload || v3ImageKey < 0) { result.Dispose(); return; }
+        DataDictionary a = v3Assets[v3ImageKey];
+        if (result.Result == null || a == null || result.Result.width != Integer(a,"width",0) || result.Result.height != Integer(a,"height",0) || Str(a,"imageToken") != v3ImageToken)
+        { V3ImageFailed(); return; }
+        DataDictionary m = V3Object(a,"marker");
+        int width = Integer(m,"width",0);
+        v3MarkerPixels = new Color32[width]; v3ImageTexture = result.Result; v3Verifying = true;
+        int y = result.Result.height - Integer(m,"y",0) - Integer(m,"height",0)/2 - 1;
+        VRCAsyncGPUReadback.Request(v3ImageTexture,0,Integer(m,"x",0),width,y,1,0,1,TextureFormat.RGBA32,(IUdonEventReceiver)this);
+    }
+
+    private void V3Readback(VRCAsyncGPUReadbackRequest request)
+    {
+        if (!v3Verifying || v3ImageKey < 0) return;
+        if (request.hasError || !request.TryGetData(v3MarkerPixels)) { V3ImageFailed(); return; }
+        int cell = v3MarkerPixels.Length/64;
+        for (int digit = 0; digit < 16; digit++)
+        {
+            int value = 0;
+            for (int bit = 0; bit < 4; bit++)
+            {
+                Color32 p = v3MarkerPixels[(digit*4+bit)*cell+cell/2];
+                if ((p.r > 64 && p.r < 192) || Mathf.Abs((int)p.r-p.g) > 24 || Mathf.Abs((int)p.r-p.b) > 24) { V3ImageFailed(); return; }
+                value = value*2+(p.r >= 192 ? 1 : 0);
+            }
+            if (value != "0123456789abcdef".IndexOf(v3ImageToken[digit])) { V3ImageFailed(); return; }
+        }
+        int slot = V3FreeCacheSlot();
+        if (slot < 0) { V3ImageFailed(); return; }
+        if (v3CacheDownloads[slot] != null) v3CacheDownloads[slot].Dispose();
+        v3CacheTokens[slot] = v3ImageToken; v3CacheTextures[slot] = v3ImageTexture;
+        v3CacheDownloads[slot] = v3ImageDownload; v3CacheUsed[slot] = Time.realtimeSinceStartup;
+        v3ImageDownload = null; v3ImageTexture = null; v3ImageKey = -1;
+        imageRequestInFlight = false; v3Verifying = false;
+        imageLoading = V3Texture(v3BaseBank,v3BaseGeneration,0) == null; imageFailed = false;
+        if (!imageLoading && v3AdRotation == 0) V3AdvanceSponsors();
+        v3Version++; V3TryCommit();
+    }
+
+    private float V3Backoff(int attempts)
+    { return (attempts <= 1 ? 10f : attempts == 2 ? 30f : 60f) + Random.Range(0f,5f); }
+
+    private void V3QueueRequest(int kind, VRCUrl url, int bank, string generation, int category, int set)
+    {
+        if (v3RequestKind != 0 || VRCUrl.IsNullOrEmpty(url)) return;
+        v3RequestKind = kind; v3RequestUrl = url; v3RequestBank = bank; v3RequestGeneration = generation;
+        v3RequestCategory = category; v3RequestSet = set; v3RequestAttempts = 0;
+        v3RequestRetryAt = Time.realtimeSinceStartup;
+    }
+
+    private void V3SendRequest()
+    {
+        if (v3RequestKind == 0 || v3RequestInFlight || Time.realtimeSinceStartup < v3RequestRetryAt || Time.realtimeSinceStartup < v3NextStringAt) return;
+        if ((v3RequestKind == 3) && !V3BankUsable(v3RequestBank,v3RequestGeneration)) { V3RequestFailed(true); return; }
+        v3RequestInFlight = true; v3RequestStarted = Time.realtimeSinceStartup;
+        v3NextStringAt = v3RequestStarted + 5.1f; v3RequestAttempts++;
+        if (v3RequestKind == 4) { statusRequestCount++; sponsorStatusLoading = true; }
+        else if (v3RequestKind == 3) drawRequestCount++;
+        else feedRequestCount++;
+        VRCStringDownloader.LoadUrl(v3RequestUrl,(IUdonEventReceiver)this);
+    }
+
+    private void V3RequestFailed(bool terminal)
+    {
+        int kind = v3RequestKind;
+        v3RequestInFlight = false;
+        if (kind == 4)
+        {
+            sponsorStatusValid = false; sponsorStatusLoading = false; sponsorStatusFailed = true;
+            RefreshSponsorAvailability(); v3Version++;
+        }
+        if (!terminal && v3RequestAttempts < 4)
+        { v3RequestRetryAt = Time.realtimeSinceStartup + V3Backoff(v3RequestAttempts); return; }
+        v3RequestKind = 0;
+        if (kind == 1) { v3BootstrapStopped = true; loading = false; failed = !ready; }
+        else if (kind == 2 || kind == 3) V3FailDraw("取得に失敗しました。再抽選ボタンで再試行できます");
+        else if (kind == 4)
+        {
+            // A failed transaction has at most three retries. The normal status
+            // poll is a separate, slow transaction and remains fail-closed.
+            v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+        }
+        v3Version++;
+    }
+
+    private bool V3LoadStatus(DataDictionary d, string json)
+    {
+        if (Str(d,"schema") != "metarea-guide-status-v3") return false;
+        double now = Number(d,"serverTime"), until = Number(d,"validUntil");
+        DataList generations = V3List(d,"generations");
+        DataDictionary current = V3Object(d,"current");
+        if (now <= 0 || until <= now || until-now > 300 || generations == null || generations.Count > 32 || current == null) return false;
+        if (v3ServerTime > 0 && now+120 < V3Now()) return false;
+        bool[] seen = new bool[32];
+        for (int i = 0; i < generations.Count; i++)
+        {
+            if (generations[i].TokenType != TokenType.DataDictionary) return false;
+            DataDictionary g = generations[i].DataDictionary;
+            int bank = Integer(g,"bank",-1); double expiry = Number(g,"expiresAtUnix");
+            if (bank < 0 || bank >= 32 || seen[bank] || !V3Hex(Str(g,"generationId")) || expiry < 0) return false;
+            seen[bank] = true;
+        }
+        int latestBank = Integer(current,"bank",-1); string latestGeneration = Str(current,"generationId");
+        if (latestBank < 0 || latestBank >= 32 || !V3Hex(latestGeneration)) return false;
+        // Reuse the existing, strict contentKey/period validation. This data is
+        // fetched directly by this client, never forwarded by the owner.
+        DataDictionary legacy = d.ShallowClone();
+        legacy.SetValue("schema",new DataToken("metarea-sponsor-status-v1"));
+        legacy.SetValue("generatedAtUnix",new DataToken(now));
+        DataToken serialized;
+        if (!VRCJson.TrySerializeToJson(legacy,JsonExportType.Minify,out serialized) || !ApplySponsorStatus(serialized.String)) return false;
+        v3ServerTime = now; v3ServerReceived = Time.realtimeSinceStartup; v3StatusUntil = until;
+        for (int b = 0; b < 32; b++) { v3BankExpiry[b] = now; }
+        for (int i = 0; i < generations.Count; i++)
+        {
+            DataDictionary g = generations[i].DataDictionary;
+            int bank = Integer(g,"bank",-1);
+            v3BankGenerations[bank] = Str(g,"generationId"); v3BankExpiry[bank] = Number(g,"expiresAtUnix");
+        }
+        v3LatestBank = latestBank; v3LatestGeneration = latestGeneration;
+        v3BlockedWorldIds = V3Strings(V3List(d,"blockedWorldIds"),4096);
+        sponsorStatusJson = json;
+        v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+        v3Version++; return true;
+    }
+
+    private bool V3SetValid(DataDictionary d, int category, int bank, string generation, int set)
+    {
+        string kind = category == 2 ? "latest" : category == 0 ? "recommended" : "random";
+        if (d == null || Str(d,"schema") != "metarea-guide-set-v3" || Str(d,"kind") != kind || Integer(d,"layoutVersion",-1) != 1 || Integer(d,"bank",-1) != bank || Str(d,"generationId") != generation || Integer(d,"setId",-1) != set) return false;
+        DataDictionary a = V3Object(d,"asset");
+        if (a == null || Integer(a,"assetId",-1) != (category == 2 ? 1 : (category == 0 ? 2 : 10)+set) || !V3RegisterAsset(bank,generation,a)) return false;
+        DataList worlds = V3List(d,"worlds");
+        if (!V3WorldsValid(worlds,bank,generation,64)) return false;
+        for (int i = 0; i < worlds.Count; i++)
+        {
+            DataDictionary w = worlds[i].DataDictionary;
+            if (Flag(w,"isSponsorOnly") || (category == 0 && !Flag(w,"recommended"))) return false;
+            DataDictionary r = V3Object(w,"image");
+            if (r != null && Integer(r,"assetId",-1) != Integer(a,"assetId",-1)) return false;
+        }
+        return true;
+    }
+
+    private void V3StringSuccess(IVRCStringDownload result)
+    {
+        if (v3RequestKind == 0 || !v3RequestInFlight || v3RequestUrl == null || result.Url.Get() != v3RequestUrl.Get()) return;
+        DataDictionary d = V3Json(result.Result,300000);
+        if (d == null) { V3RequestFailed(false); return; }
+        int kind = v3RequestKind;
+        bool accepted = false;
+        if (kind == 1)
+        {
+            string generation = Str(d,"generationId"); int bank = Integer(d,"bank",-1);
+            accepted = (string.IsNullOrEmpty(v3RequestGeneration) || (generation == v3RequestGeneration && bank == v3RequestBank)) && V3RegisterManifest(d);
+            if (accepted)
+            {
+                if (V3Owner())
+                {
+                    v3SharedBaseGeneration = generation; v3SharedBaseBank = bank;
+                    for (int c = 0; c < 2; c++)
+                    {
+                        if (!string.IsNullOrEmpty(V3SharedGeneration(c))) continue;
+                        if (c == 0) { v3SharedRecommendedGeneration = generation; v3SharedRecommendedBank = bank; v3SharedRecommendedSet = 0; v3SharedRecommendedUsed = 1; }
+                        else { v3SharedRandomGeneration = generation; v3SharedRandomBank = bank; v3SharedRandomSet = 0; v3SharedRandomUsed = 1; }
+                    }
+                }
+                accepted = V3ApplyBootstrap(result.Result);
+                if (accepted && V3Owner()) RequestSerialization();
+            }
+        }
+        else if (kind == 2)
+        {
+            accepted = V3RegisterManifest(d);
+            if (accepted && v3DrawCategory >= 0 && V3Owner() && v3DrawOwnerTerm == v3OwnerTerm)
+            {
+                v3TargetBank = Integer(d,"bank",-1); v3TargetGeneration = Str(d,"generationId");
+                v3LatestBank = v3TargetBank; v3LatestGeneration = v3TargetGeneration;
+                v3TargetSet = V3ChooseSet(v3DrawCategory,v3TargetGeneration);
+                v3AwaitCatalog = false;
+            }
+            else if (accepted) { V3FailDraw("管理役の変更により再抽選を中止しました"); }
+        }
+        else if (kind == 3)
+        {
+            accepted = v3DrawCategory == v3RequestCategory && v3TargetGeneration == v3RequestGeneration && v3TargetBank == v3RequestBank && v3TargetSet == v3RequestSet && V3SetValid(d,v3RequestCategory,v3RequestBank,v3RequestGeneration,v3RequestSet);
+            if (accepted) v3PendingJson = result.Result;
+        }
+        else if (kind == 4) accepted = V3LoadStatus(d,result.Result);
+        if (!accepted) { V3RequestFailed(false); return; }
+        v3RequestKind = 0; v3RequestInFlight = false; v3RequestAttempts = 0;
+        v3Version++; V3TryCommit();
+    }
+
+    private int V3ChooseSet(int category, string generation)
+    {
+        int count = category == 0 ? 8 : 16;
+        int mask = generation == V3SharedGeneration(category) ? (category == 0 ? v3SharedRecommendedUsed : v3SharedRandomUsed) : 0;
+        int last = generation == V3SharedGeneration(category) ? V3SharedSet(category) : -1;
+        if ((mask & ((1 << count)-1)) == (1 << count)-1) mask = 0;
+        int available = 0;
+        for (int i = 0; i < count; i++) if ((mask & (1 << i)) == 0 && i != last) available++;
+        int pick = Random.Range(0,Mathf.Max(1,available));
+        for (int i = 0; i < count; i++)
+        {
+            if ((mask & (1 << i)) != 0 || i == last) continue;
+            if (pick-- == 0) return i;
+        }
+        return (last+1)%count;
+    }
+
+    private void V3BeginDraw(int category, bool user)
+    {
+        if (!V3Owner() || !ready || category < 0 || category > 1 || v3DrawCategory >= 0 || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        v3DrawCategory = category; v3UserDraw = true; v3AwaitCatalog = true;
+        v3DrawOwnerTerm = v3OwnerTerm; v3DrawSequence = v3SelectionSequence;
+        v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup + 300f;
+        sharedDrawBusyTab = category == 0 ? 1 : 3; sharedDrawBusyEnd = TimeNow()+300;
+        drawErrors[category] = ""; RequestSerialization(); v3Version++;
+    }
+
+    private void V3ReceiveSelection()
+    {
+        if (!ready || v3DrawCategory >= 0) return;
+        for (int c = 0; c < 2; c++)
+        {
+            string generation = V3SharedGeneration(c); int bank = V3SharedBank(c), set = V3SharedSet(c);
+            if (!V3Hex(generation) || bank < 0 || bank >= 32 || set < 0 || set >= (c == 0 ? 8 : 16)) continue;
+            if (v3DrawComplete[c] && v3DrawGenerations[c] == generation && v3DrawBanks[c] == bank && v3DrawSets[c] == set) continue;
+            if (v3StoppedSelections[c] == V3SelectionKey(generation,set)) continue;
+            if (!V3BankUsable(bank,generation)) continue;
+            v3DrawCategory = c; v3UserDraw = false; v3AwaitCatalog = false;
+            v3TargetBank = bank; v3TargetGeneration = generation; v3TargetSet = set;
+            v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup+300f;
+            v3DrawOwnerTerm = v3OwnerTerm; v3DrawSequence = v3SelectionSequence;
+            return;
+        }
+        if (!v3LatestComplete && V3BankUsable(v3BaseBank,v3BaseGeneration))
+        {
+            v3DrawCategory = 2; v3UserDraw = false; v3AwaitCatalog = false;
+            v3TargetBank = v3BaseBank; v3TargetGeneration = v3BaseGeneration; v3TargetSet = 0;
+            v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup+300f;
+        }
+    }
+
+    private void V3FailDraw(string message)
+    {
+        int c = v3DrawCategory;
+        if (c < 0) return;
+        if (c < 2) drawErrors[c] = message;
+        else v3LatestComplete = true;
+        if (!v3UserDraw && c < 2) v3StoppedSelections[c] = V3SelectionKey(v3TargetGeneration,v3TargetSet);
+        if (V3Owner() && (v3UserDraw || v3AwaitCatalog))
+        { sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0; RequestSerialization(); }
+        v3DrawCategory = -1; v3PendingJson = ""; v3AwaitCatalog = false; v3UserDraw = false;
+        v3NextMigrationAttempt = Time.realtimeSinceStartup+300f;
+        v3Version++;
+    }
+
+    private void V3TryCommit()
+    {
+        if (v3DrawCategory < 0 || string.IsNullOrEmpty(v3PendingJson)) return;
+        int c = v3DrawCategory;
+        if (!V3BankUsable(v3TargetBank,v3TargetGeneration)) { V3FailDraw("この結果の保持期限が終了しました。再抽選してください"); return; }
+        if (v3UserDraw && (!V3Owner() || v3DrawOwnerTerm != v3OwnerTerm || v3DrawSequence != v3SelectionSequence)) { V3FailDraw("再抽選の管理役が変更されました"); return; }
+        if (!v3UserDraw && c < 2 && (V3SharedGeneration(c) != v3TargetGeneration || V3SharedBank(c) != v3TargetBank || V3SharedSet(c) != v3TargetSet)) { V3FailDraw("新しい共有結果を取得します"); return; }
+        DataDictionary d = V3Json(v3PendingJson,100000);
+        if (d == null) { V3FailDraw("結果を読み込めませんでした"); return; }
+        DataList worlds = V3List(d,"worlds");
+        bool bootstrapSet = !v3UserDraw && v3TargetGeneration == v3BaseGeneration && v3TargetSet == 0;
+        int asset = c == 2 ? 1 : (c == 0 ? 2 : 10)+v3TargetSet;
+        if (worlds.Count > 0 && !bootstrapSet && V3Texture(v3TargetBank,v3TargetGeneration,asset) == null)
+        {
+            if (v3ImageAttempts[v3TargetBank*32+asset] >= 4) V3FailDraw("画像取得に失敗しました。再試行できます");
+            return;
+        }
+        string json = v3PendingJson;
+        V3ApplyWorlds(c,worlds,v3TargetBank,v3TargetGeneration,v3TargetSet,true,Integer(d,"totalCandidates",worlds.Count));
+        if (c == 2) v3LatestJson = json;
+        else { v3LocalDrawJson[c] = json; v3StoppedSelections[c] = ""; }
+        if (v3UserDraw || v3AwaitCatalog)
+        {
+            int limit = c == 0 ? 8 : 16;
+            int used = v3TargetGeneration == V3SharedGeneration(c) ? (c == 0 ? v3SharedRecommendedUsed : v3SharedRandomUsed) : 0;
+            if ((used & ((1 << limit)-1)) == (1 << limit)-1) used = 0;
+            used |= 1 << v3TargetSet;
+            if (c == 0) { v3SharedRecommendedGeneration = v3TargetGeneration; v3SharedRecommendedBank = v3TargetBank; v3SharedRecommendedSet = v3TargetSet; v3SharedRecommendedUsed = used; }
+            else { v3SharedRandomGeneration = v3TargetGeneration; v3SharedRandomBank = v3TargetBank; v3SharedRandomSet = v3TargetSet; v3SharedRandomUsed = used; }
+            v3SelectionSequence++;
+            sharedDrawCooldownEnd = TimeNow()+15; sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0;
+            RequestSerialization();
+        }
+        v3DrawCategory = -1; v3PendingJson = ""; v3UserDraw = false; v3AwaitCatalog = false;
+        v3Version++;
+    }
+
+    private bool V3WorldAllowed(int world)
+    {
+        if (world < 0 || world >= count || string.IsNullOrEmpty(ids[world])) return false;
+        for (int i = 0; i < v3BlockedWorldIds.Length; i++) if (v3BlockedWorldIds[i] == ids[world] || v3BlockedWorldIds[i] == portalIds[world]) return false;
+        return true;
+    }
+
+    private void V3Initialize()
+    {
+        if (sharedDataSource != null) { V3Pull(); return; }
+        loading = !ready; v3Version++;
+    }
+
+    private void V3Retry()
+    {
+        if (sharedDataSource != null) { sharedDataSource.V3Retry(); return; }
+        if (Time.realtimeSinceStartup < v3NextStringAt) return;
+        v3BootstrapStopped = false; v3NextStatus = 0;
+        for (int i = 0; i < v3ImageAttempts.Length; i++) if (v3ImageAttempts[i] >= 4) { v3ImageAttempts[i] = 0; v3ImageRetryAt[i] = 0; }
+        v3StoppedSelections[0] = ""; v3StoppedSelections[1] = "";
+        imageFailed = false; failed = false; v3Version++;
+    }
+
+    private bool V3NearExpiry(int bank, string generation)
+    {
+        if (bank < 0 || bank >= 32 || v3BankGenerations[bank] != generation) return true;
+        double expiry = v3BankExpiry[bank];
+        return expiry > 0 && V3Now() >= expiry-3600;
+    }
+
+    private void V3ScheduleMetadata()
+    {
+        if (v3RequestKind != 0) { V3SendRequest(); return; }
+        string expected = v3SharedBaseGeneration;
+        if (expected != v3BootstrapAttemptGeneration)
+        { v3BootstrapAttemptGeneration = expected; v3BootstrapStopped = false; }
+        if ((!ready || v3BaseGeneration != expected) && !v3BootstrapStopped)
+        {
+            if (string.IsNullOrEmpty(expected))
+            {
+                if (V3Owner()) V3QueueRequest(1,feedUrl,-1,"",-1,0);
+            }
+            else if (v3SharedBaseBank >= 0 && v3SharedBaseBank < 32 && v3ManifestUrls != null && v3ManifestUrls.Length == 32)
+                V3QueueRequest(1,v3ManifestUrls[v3SharedBaseBank],v3SharedBaseBank,expected,-1,0);
+            V3SendRequest(); return;
+        }
+        if (!ready) return;
+        if (Time.realtimeSinceStartup >= v3NextStatus)
+        { V3QueueRequest(4,sponsorStatusUrl,-1,"",-1,0); V3SendRequest(); return; }
+        if (v3DrawCategory >= 0)
+        {
+            if (v3AwaitCatalog) V3QueueRequest(2,feedUrl,-1,"",v3DrawCategory,0);
+            else if (string.IsNullOrEmpty(v3PendingJson) && v3SetUrls != null && v3SetUrls.Length == 768)
+            {
+                if (v3DrawCategory == 2)
+                { V3QueueRequest(3,v3LatestUrls[v3TargetBank],v3TargetBank,v3TargetGeneration,2,0); V3SendRequest(); return; }
+                int setIndex = v3TargetBank*24+(v3DrawCategory == 0 ? 0 : 8)+v3TargetSet;
+                if (setIndex >= 0 && setIndex < v3SetUrls.Length)
+                    V3QueueRequest(3,v3SetUrls[setIndex],v3TargetBank,v3TargetGeneration,v3DrawCategory,v3TargetSet);
+            }
+            V3SendRequest(); return;
+        }
+        if (V3Owner() && Time.realtimeSinceStartup >= v3NextMigrationAttempt && v3LatestGeneration != "" && sponsorStatusValid)
+        {
+            if (V3NearExpiry(v3BaseBank,v3BaseGeneration) && v3BaseGeneration != v3LatestGeneration && !v3BootstrapStopped)
+            {
+                v3NextMigrationAttempt = Time.realtimeSinceStartup+300;
+                V3QueueRequest(1,feedUrl,-1,"",-1,0); V3SendRequest(); return;
+            }
+            for (int c = 0; c < 2; c++)
+                if (V3NearExpiry(V3SharedBank(c),V3SharedGeneration(c)) && V3SharedGeneration(c) != v3LatestGeneration)
+                { V3BeginDraw(c,false); return; }
+        }
+    }
+
+    private void V3Tick()
+    {
+        if (sharedDataSource != null)
+        {
+            V3Pull();
+            UpdateLoadingIndicators(); UpdateDrawUi(); RenderFavorites();
+            if (ready && gameObject.activeInHierarchy && topPanel != null && topPanel.transform.parent.gameObject.activeInHierarchy) QueueStatistics(4);
+            if (portalButton != null)
+            {
+                int wait = Mathf.CeilToInt(PortalWait());
+                portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
+                adPortalButton.interactable = ready && wait == 0 && view == 3 && TopPortalAvailable();
+                portalButtonLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL\nこの世界へ";
+                adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL  この世界へ";
+            }
+            return;
+        }
+        if (v3RequestInFlight && Time.realtimeSinceStartup-v3RequestStarted > 30f) V3RequestFailed(false);
+        if (v3ImageKey >= 0 && Time.realtimeSinceStartup-imageRequestStarted > 60f) V3ImageFailed();
+        if (v3DrawCategory >= 0 && Time.realtimeSinceStartup > v3DrawDeadline) V3FailDraw("取得がタイムアウトしました。再試行できます");
+        if (v3UserDraw && (!V3Owner() || v3DrawOwnerTerm != v3OwnerTerm))
+        {
+            if (v3RequestKind == 2 || v3RequestKind == 3) { v3RequestKind = 0; v3RequestInFlight = false; }
+            V3FailDraw("管理役が変わりました。再試行できます");
+        }
+        if (ready)
+        {
+            if (sponsorStatusValid && V3Now() >= v3StatusUntil) { sponsorStatusValid = false; sponsorStatusFailed = true; v3Version++; }
+            if (RefreshSponsorAvailability()) v3Version++;
+            V3TryCommit(); V3ReceiveSelection();
+            V3PumpImages();
+            if (view != 3) UpdateSponsorRotation();
+        }
+        V3ScheduleMetadata();
+        PumpAdClicks(); PumpStatistics();
+        if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); }
+    }
+
+    private void V3Pull()
+    {
+        MetaReaWallGuide source = sharedDataSource;
+        if (source == null || !source.isSharedDataSource) return;
+        if (!source.ready) { loading = source.loading; failed = source.failed; Render(); return; }
+        bool detailOpen = view == 2 || view == 3 || (view == 3 && beforeAdView == 2);
+        if (v3Bootstrap != source.v3Bootstrap && !(ready && detailOpen))
+        {
+            v3SharedRecommendedGeneration = source.v3SharedRecommendedGeneration;
+            v3SharedRandomGeneration = source.v3SharedRandomGeneration;
+            v3SharedRecommendedBank = source.v3SharedRecommendedBank; v3SharedRandomBank = source.v3SharedRandomBank;
+            v3SharedRecommendedSet = source.v3SharedRecommendedSet; v3SharedRandomSet = source.v3SharedRandomSet;
+            if (!V3ApplyBootstrap(source.v3Bootstrap)) return;
+        }
+        bool changed = v3DisplayVersion != source.v3Version;
+        v3DisplayVersion = source.v3Version;
+        loading = source.loading; failed = source.failed; imageLoading = source.imageLoading; imageFailed = source.imageFailed;
+        // Definitions are shared but textures remain owned by the coordinator.
+        v3Assets = source.v3Assets; v3AssetGenerations = source.v3AssetGenerations;
+        v3BankGenerations = source.v3BankGenerations; v3BankExpiry = source.v3BankExpiry;
+        v3ServerTime = source.v3ServerTime; v3ServerReceived = source.v3ServerReceived; v3StatusUntil = source.v3StatusUntil;
+        v3BlockedWorldIds = source.v3BlockedWorldIds;
+        if (appliedSponsorStatusVersion != source.sponsorStatusVersion)
+        {
+            DataDictionary status = V3Json(source.sponsorStatusJson,300000);
+            if (status != null) V3LoadStatus(status,source.sponsorStatusJson);
+            appliedSponsorStatusVersion = source.sponsorStatusVersion; changed = true;
+        }
+        sponsorStatusValid = source.sponsorStatusValid; sponsorStatusFailed = source.sponsorStatusFailed;
+        sponsorStatusUtc = source.sponsorStatusUtc; sponsorStatusReceived = source.sponsorStatusReceived;
+        if (RefreshSponsorAvailability()) changed = true;
+        if (v3BaseGeneration == source.v3BaseGeneration)
+        {
+            if (currentAd != source.currentAd || sponsorLeft != source.sponsorLeft || sponsorRight != source.sponsorRight) changed = true;
+            currentAd = source.currentAd; sponsorLeft = source.sponsorLeft; sponsorRight = source.sponsorRight;
+        }
+        drawCooldownUntil = Time.realtimeSinceStartup+source.SharedRemaining(source.sharedDrawCooldownEnd);
+        for (int c = 0; c < 2; c++)
+        {
+            if (drawErrors[c] != source.drawErrors[c]) { drawErrors[c] = source.drawErrors[c]; changed = true; }
+            string json = source.v3LocalDrawJson[c];
+            if (string.IsNullOrEmpty(json) || v3LocalDrawJson[c] == json) continue;
+            int start = 64+c*64;
+            if ((view == 2 || (view == 3 && beforeAdView == 2)) && selected >= start && selected < start+64) continue;
+            DataDictionary d = V3Json(json,100000);
+            if (d == null) continue;
+            V3ApplyWorlds(c,V3List(d,"worlds"),source.v3DrawBanks[c],source.v3DrawGenerations[c],source.v3DrawSets[c],true,Integer(d,"totalCandidates",0));
+            v3LocalDrawJson[c] = json; changed = true;
+        }
+        if (v3BaseGeneration == source.v3BaseGeneration && v3LatestJson != source.v3LatestJson && !string.IsNullOrEmpty(source.v3LatestJson) && !(view == 2 && selected >= 192))
+        {
+            DataDictionary d = V3Json(source.v3LatestJson,100000);
+            if (d != null) { V3ApplyWorlds(2,V3List(d,"worlds"),v3BaseBank,v3BaseGeneration,0,true,0); v3LatestJson = source.v3LatestJson; changed = true; }
+        }
+        if (changed) Render();
+    }
+
+    private int V3InitialTop(int n)
+    {
+        if (n >= 0 && n < v3InitialTopIds.Length)
+            for (int i = 0; i < topCount; i++) if (topIds[i] == v3InitialTopIds[n] && IsTopActive(i)) return i;
+        return -1;
+    }
+
+    private int V3InitialBanner(int n)
+    {
+        if (n >= 0 && n < v3InitialBannerIds.Length)
+            for (int i = 0; i < adCount; i++) if (adIds[i] == v3InitialBannerIds[n] && IsAdActive(i) && adShowInBanner[i]) return i;
+        return -1;
+    }
+
+    private bool V3RefLoaded(DataDictionary reference)
+    { return reference == null || V3Texture(v3BaseBank,v3BaseGeneration,Integer(reference,"assetId",-1)) != null; }
+
+    private bool V3TopLoaded(int top)
+    {
+        if (top < 0 || top >= topCount) return true;
+        if (topAds[top] >= 0 && v3TopImages[topAds[top]] != null) return V3RefLoaded(v3TopImages[topAds[top]]);
+        if (topTypes[top] == 0) return V3RefLoaded(V3WorldRef(topWorlds[top]));
+        return topAds[top] < 0 || V3RefLoaded(v3BannerImages[topAds[top]]);
+    }
+
+    private void V3AdvanceSponsors()
+    {
+        int banner = -1, left = -1, right = -1;
+        if (v3AdRotation < 2)
+        {
+            banner = V3InitialBanner(v3AdRotation);
+            left = V3InitialTop(v3AdRotation*2); right = V3InitialTop(v3AdRotation*2+1);
+        }
+        // If prefetched placements were removed, select only verified loaded
+        // replacements; never replace a good ad with a loading placeholder.
+        if (banner < 0)
+            for (int n = 0; n < activeAdCount; n++)
+            {
+                if (adCursor >= activeAdCount) { ShuffleAds(); adCursor = 0; }
+                int candidate = adOrder[adCursor++];
+                if (IsAdActive(candidate) && V3RefLoaded(v3BannerImages[candidate])) { banner = candidate; break; }
+            }
+        if (left < 0)
+            for (int n = 0; n < 16; n++) { int candidate = PickWeightedTop(-1); if (candidate < 0 || V3TopLoaded(candidate)) { left = candidate; break; } }
+        if (right < 0)
+            for (int n = 0; n < 16; n++) { int candidate = PickWeightedTop(left); if (candidate < 0 || V3TopLoaded(candidate)) { right = candidate; break; } }
+        if (banner >= 0 && V3RefLoaded(v3BannerImages[banner])) currentAd = banner;
+        else if (!IsAdActive(currentAd)) currentAd = -1;
+        if (left >= 0 && V3TopLoaded(left)) sponsorLeft = left;
+        else if (!IsTopActive(sponsorLeft)) sponsorLeft = -1;
+        if (right >= 0 && right != sponsorLeft && V3TopLoaded(right)) sponsorRight = right;
+        else if (!IsTopActive(sponsorRight) || sponsorRight == sponsorLeft) sponsorRight = -1;
+        if (currentAd >= 0 || sponsorLeft >= 0 || sponsorRight >= 0) v3AdRotation++;
+        sponsorRotationReady = false; nextSponsorRotation = Time.time+Mathf.Max(5f,sponsorRotationSeconds);
+        v3Version++;
+    }
+
+    private void V3DrawUi()
+    {
+        if (isSharedDataSource || favoriteTabSelected || (tab != 1 && tab != 3) || reshuffleButton == null) return;
+        MetaReaWallGuide source = sharedDataSource != null ? sharedDataSource : this;
+        int c = tab == 1 ? 0 : 1;
+        int wait = Mathf.CeilToInt(source.SharedRemaining(source.sharedDrawCooldownEnd));
+        bool busy = source.SharedDrawBusy();
+        reshuffleButton.interactable = ready && !busy && wait == 0;
+        if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
+        if (reshuffleLabel != null) reshuffleLabel.text = busy ? "抽選中…" : wait > 0 ? "あと " + wait + " 秒" : "再抽選";
+        if (statusLabel != null)
+        {
+            if (busy) statusLabel.text = "次の候補を読み込んでいます。現在の結果はそのまま閲覧できます";
+            else if (!string.IsNullOrEmpty(drawErrors[c])) statusLabel.text = drawErrors[c];
+            else if (drawHasResult[c]) statusLabel.text = v3DrawComplete[c] ? "全 " + drawTotalCandidates[c] + " 件から " + drawCounts[c] + " 件を表示しています" : "最初のページを表示しています。続きの情報を取得中です";
+        }
+        if (orderCount == 0 && pageLabel != null) pageLabel.text = drawHasResult[c] ? "対象ワールドなし" : "読み込み中…";
+    }
+
+    private int V3WorldBank(int world)
+    { return world < 64 || world >= 192 ? v3BaseBank : v3DrawBanks[world < 128 ? 0 : 1]; }
+    private string V3WorldGeneration(int world)
+    { return world < 64 || world >= 192 ? v3BaseGeneration : v3DrawGenerations[world < 128 ? 0 : 1]; }
 
 }

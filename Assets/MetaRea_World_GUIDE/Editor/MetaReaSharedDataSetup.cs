@@ -90,6 +90,11 @@ public static class MetaReaSharedDataSetup
             source.sponsorTopAtlasUrls = first.sponsorTopAtlasUrls;
             MetaReaOnlineSetup.EnsureSponsorUrls(source, first.feedUrl.Get());
             source.drawAtlasUrls = first.drawAtlasUrls;
+            source.guideV3 = first.guideV3;
+            source.v3ManifestUrls = first.v3ManifestUrls;
+            source.v3LatestUrls = first.v3LatestUrls;
+            source.v3SetUrls = first.v3SetUrls;
+            source.v3ImageUrls = first.v3ImageUrls;
             source.sampleFeed = first.sampleFeed;
             source.sponsorRotationSeconds = first.sponsorRotationSeconds;
             source.sponsorFadeSeconds = first.sponsorFadeSeconds;

@@ -28,8 +28,8 @@ public static class MetaReaOnlineSetup
         }
         return cachedClickUrls;
     }
-    public const string FeedEndpoint = "https://metarea.net/api/udon/feed-v2";
-    public const string GuideVersion = "0.9.0";
+    public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
+    public const string GuideVersion = "0.10.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -37,11 +37,12 @@ public static class MetaReaOnlineSetup
     public static string VersionedFeedUrl(string url)
     {
         if (url != FeedEndpoint && !IsVersionedOfficialFeed(url)) return url;
-        return FeedEndpoint + "?version=" + GuideVersion + "&topImage=1&bannerLayout=3&detailLayout=2";
+        return FeedEndpoint + "?version=" + GuideVersion;
     }
 
     static bool IsVersionedOfficialFeed(string url)
     {
+        if (url == "https://metarea.net/api/udon/feed-v2" || (url != null && url.StartsWith("https://metarea.net/api/udon/feed-v2?", StringComparison.Ordinal))) return true;
         string prefix = FeedEndpoint + "?";
         if (url == null || !url.StartsWith(prefix, StringComparison.Ordinal) || url.IndexOf('#') >= 0) return false;
         foreach (string part in url.Substring(prefix.Length).Split('&'))
@@ -62,7 +63,7 @@ public static class MetaReaOnlineSetup
             urls[i] = new VRCUrl("https://metarea.net/api/udon/telemetry?schema=1&event=" + events[i] + "&" + version);
         return urls;
     }
-    public const string SponsorStatusUrl = "https://metarea.net/api/udon/status";
+    public const string SponsorStatusUrl = "https://metarea.net/api/udon/guide-v3/status.json";
     public const string AtlasTemplate = "https://metarea.net/api/udon/atlas/{0}.jpg";
     public const string SponsorAtlasTemplate = "https://metarea.net/api/udon/sponsors/{0}.png";
     public const string SponsorExtraAtlasTemplate = "https://metarea.net/api/udon/sponsor-banners/{0}/1.png";
@@ -76,18 +77,7 @@ public static class MetaReaOnlineSetup
     public static void EnsureSponsorUrls(MetaReaWallGuide guide, string feed)
     {
         if (feed != FeedEndpoint && !IsVersionedOfficialFeed(feed)) return;
-        if (cachedDetailAtlases == null)
-        {
-            cachedDetailAtlases = new VRCUrl[SnapshotCapacity * 4];
-            cachedTopAtlases = new VRCUrl[SnapshotCapacity * 2];
-            for (int snapshot = 0; snapshot < SnapshotCapacity; snapshot++)
-            {
-                for (int page = 0; page < 4; page++) cachedDetailAtlases[snapshot * 4 + page] = new VRCUrl(string.Format(SponsorDetailAtlasTemplate, snapshot, page));
-                for (int page = 0; page < 2; page++) cachedTopAtlases[snapshot * 2 + page] = new VRCUrl(string.Format(SponsorTopAtlasTemplate, snapshot, page));
-            }
-        }
-        guide.sponsorDetailAtlasUrls = cachedDetailAtlases;
-        guide.sponsorTopAtlasUrls = cachedTopAtlases;
+        ConfigureV3Urls(guide);
     }
 
     [MenuItem("MetaRea/選択した壁新聞をオンライン配信に設定")]
@@ -110,22 +100,7 @@ public static class MetaReaOnlineSetup
         guide.feedUrl = new VRCUrl(VersionedFeedUrl(feed));
         guide.statisticsUrls = StatisticsUrls(feed);
         guide.sponsorStatusUrl = new VRCUrl(SponsorStatusUrl);
-        guide.recommendedDrawUrl = new VRCUrl(RecommendedDrawUrl);
-        guide.randomDrawUrl = new VRCUrl(RandomDrawUrl);
-        guide.drawAtlasUrls = new VRCUrl[DrawAtlasCapacity];
-        for (int i = 0; i < DrawAtlasCapacity; i++) guide.drawAtlasUrls[i] = new VRCUrl(string.Format(DrawAtlasTemplate, i));
-        guide.atlasUrls = new VRCUrl[SnapshotCapacity];
-        guide.sponsorAtlasUrls = new VRCUrl[SnapshotCapacity];
-        guide.sponsorExtraAtlasUrls = new VRCUrl[SnapshotCapacity];
-        guide.sponsorDetailAtlasUrls = new VRCUrl[SnapshotCapacity * 4];
-        guide.sponsorTopAtlasUrls = new VRCUrl[SnapshotCapacity * 2];
-        for (int i = 0; i < SnapshotCapacity; i++)
-        {
-            guide.atlasUrls[i] = new VRCUrl(string.Format(atlasTemplate, i)); guide.sponsorAtlasUrls[i] = new VRCUrl(string.Format(SponsorAtlasTemplate, i));
-            guide.sponsorExtraAtlasUrls[i] = new VRCUrl(string.Format(SponsorExtraAtlasTemplate, i));
-            for (int page = 0; page < 4; page++) guide.sponsorDetailAtlasUrls[i * 4 + page] = new VRCUrl(string.Format(SponsorDetailAtlasTemplate, i, page));
-            for (int page = 0; page < 2; page++) guide.sponsorTopAtlasUrls[i * 2 + page] = new VRCUrl(string.Format(SponsorTopAtlasTemplate, i, page));
-        }
+        ConfigureV3Urls(guide);
         guide.sampleAdBanner = AssetDatabase.LoadAssetAtPath<Texture2D>(MetaReaPrototypeBuilder.Root + "/Samples/SponsorAds/Navy/banner-1536x256.png");
         guide.sampleAdDetail = AssetDatabase.LoadAssetAtPath<Texture2D>(MetaReaPrototypeBuilder.Root + "/Samples/SponsorAds/Navy/detail.png");
         guide.onlineMode = true;
@@ -142,4 +117,26 @@ public static class MetaReaOnlineSetup
         UdonSharpEditorUtility.CopyProxyToUdon(guide);
         EditorUtility.SetDirty(guide);
     }
+
+    public static void ConfigureV3Urls(MetaReaWallGuide guide)
+    {
+        guide.guideV3 = true;
+        const string root = "https://metarea.net/api/udon/guide-v3/";
+        guide.v3ManifestUrls = new VRCUrl[32];
+        guide.v3LatestUrls = new VRCUrl[32];
+        guide.v3SetUrls = new VRCUrl[32*24];
+        guide.v3ImageUrls = new VRCUrl[32*32];
+        for (int bank=0; bank<32; bank++)
+        {
+            string prefix=root+"banks/"+bank+"/";
+            guide.v3ManifestUrls[bank]=new VRCUrl(prefix+"manifest.json");
+            guide.v3LatestUrls[bank]=new VRCUrl(prefix+"sets/latest/0.json");
+            for(int set=0;set<24;set++) guide.v3SetUrls[bank*24+set]=new VRCUrl(prefix+"sets/"+(set<8?"recommended/"+set:"random/"+(set-8))+".json");
+            for(int image=0;image<32;image++)guide.v3ImageUrls[bank*32+image]=new VRCUrl(prefix+"images/"+image+(image==0||(image>=26&&image<=30)?".png":".jpg"));
+        }
+        guide.atlasUrls = new VRCUrl[0]; guide.sponsorAtlasUrls = new VRCUrl[0]; guide.sponsorExtraAtlasUrls = new VRCUrl[0];
+        guide.sponsorDetailAtlasUrls = new VRCUrl[0]; guide.sponsorTopAtlasUrls = new VRCUrl[0]; guide.drawAtlasUrls = new VRCUrl[0];
+        guide.recommendedDrawUrl = new VRCUrl(root+"current.json"); guide.randomDrawUrl = new VRCUrl(root+"current.json");
+    }
+
 }
