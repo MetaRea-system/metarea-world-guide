@@ -716,7 +716,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     // At most one metadata request is issued at a time, including status.
     private VRCUrl v3RequestUrl;
-    private int v3RequestKind; // 1 bootstrap, 2 catalog, 3 set, 4 status
+    private int v3RequestKind; // 1 bootstrap, 2 catalog, 3 set, 4 status, 5 recovery status, 6 selection manifest
     private int v3RequestBank = -1;
     private string v3RequestGeneration = "";
     private int v3RequestCategory;
@@ -729,6 +729,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     // timeout: its eventual callback must drain before a newer request starts.
     private string[] v3WireUrls = new string[8];
     private bool[] v3WireAbandoned = new bool[8];
+    private float[] v3WireStarted = new float[8];
     private float v3RequestQueuedAt;
     private int v3RequestOwnerTerm;
     private int v3RequestSelectionSequence;
@@ -761,6 +762,81 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private float v3DrawDeadline;
     private string[] v3StoppedSelections = new string[2];
     private float v3NextMigrationAttempt;
+    private bool v3RecoveryPending;
+    private float v3RecoveryAt;
+    private int v3RecoveryRound;
+    private bool v3RecoveryBootstrap;
+    private bool v3SerializationPending;
+    private float v3SerializationRetryAt;
+
+    public override void OnPostSerialization(VRC.Udon.Common.SerializationResult result)
+    {
+        if (!guideV3 || !onlineMode || sharedDataSource != null || !V3Owner()) return;
+        v3SerializationPending = !result.success;
+        if (v3SerializationPending) v3SerializationRetryAt = Time.realtimeSinceStartup+5f+Random.Range(0f,1f);
+    }
+
+    private void V3ArmRecovery()
+    {
+        if (v3RecoveryPending) return;
+        float delay = v3RecoveryRound == 0 ? 30f : v3RecoveryRound == 1 ? 60f : v3RecoveryRound == 2 ? 120f : v3RecoveryRound == 3 ? 240f : 300f;
+        v3RecoveryRound = Mathf.Min(4,v3RecoveryRound+1);
+        v3RecoveryAt = Time.realtimeSinceStartup+delay+Random.Range(0f,10f);
+        v3RecoveryPending = true;
+    }
+
+    private void V3Recover()
+    {
+        if (!v3RecoveryPending || v3Maintenance || Time.realtimeSinceStartup < v3RecoveryAt || Time.realtimeSinceStartup < v3ServerWaitUntil || v3RequestKind != 0 || v3DrawCategory >= 0) return;
+        v3RecoveryPending = false;
+        // Only the owner may refresh the common base. Followers keep the
+        // synchronized identifiers; a retry must never make a new local draw.
+        v3RecoveryBootstrap = V3Owner() && (v3BootstrapStopped || !V3BankUsable(v3BaseBank,v3BaseGeneration) || V3SharedExpired(0) || V3SharedExpired(1));
+        v3BootstrapStopped = false; v3LatestFailed = false;
+        v3StoppedSelections[0] = ""; v3StoppedSelections[1] = "";
+        for (int i = 0; i < v3ImageAttempts.Length; i++)
+            if (v3ImageAttempts[i] >= 4) { v3ImageAttempts[i] = 0; v3ImageRetryAt[i] = 0; }
+        failed = false; imageFailed = false; loading = !ready;
+        v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.1f,1f));
+        v3Version++;
+    }
+
+    private bool V3SelectionPending(int c)
+    {
+        return V3Hex(V3SharedGeneration(c)) && (v3DrawGenerations[c] != V3SharedGeneration(c) || v3DrawBanks[c] != V3SharedBank(c) || v3DrawSets[c] != V3SharedSet(c));
+    }
+
+    private bool V3SharedExpired(int c)
+    {
+        int bank = V3SharedBank(c);
+        if (bank < 0 || bank >= 32 || !V3Hex(V3SharedGeneration(c))) return false;
+        return (!string.IsNullOrEmpty(v3BankGenerations[bank]) && v3BankGenerations[bank] != V3SharedGeneration(c)) || (v3BankExpiry[bank] > 0 && V3Now() >= v3BankExpiry[bank]);
+    }
+
+    private void V3PublishSelection()
+    {
+        if (!v3UserDraw || !V3Owner() || v3DrawOwnerTerm != v3OwnerTerm || v3DrawSequence != v3SelectionSequence) return;
+        int c = v3DrawCategory;
+        if (c < 0 || c > 1) return;
+        int limit = c == 0 ? 8 : 16;
+        int used = v3TargetGeneration == V3SharedGeneration(c) ? (c == 0 ? v3SharedRecommendedUsed : v3SharedRandomUsed) : 0;
+        if ((used & ((1 << limit)-1)) == (1 << limit)-1) used = 0;
+        used |= 1 << v3TargetSet;
+        if (c == 0) { v3SharedRecommendedGeneration = v3TargetGeneration; v3SharedRecommendedBank = v3TargetBank; v3SharedRecommendedSet = v3TargetSet; v3SharedRecommendedUsed = used; }
+        else { v3SharedRandomGeneration = v3TargetGeneration; v3SharedRandomBank = v3TargetBank; v3SharedRandomSet = v3TargetSet; v3SharedRandomUsed = used; }
+        v3SelectionSequence++; v3DrawSequence = v3SelectionSequence;
+        // Publish verified metadata BEFORE waiting for the owner's image.
+        // From here even the owner is a follower of this immutable selection.
+        v3UserDraw = false; v3AwaitCatalog = false;
+        sharedDrawCooldownEnd = TimeNow()+15;
+        RequestSerialization(); v3Version++;
+    }
+
+    private void V3FinishSharedDraw(int c)
+    {
+        if (V3Owner() && c < 2 && sharedDrawBusyTab == (c == 0 ? 1 : 3) && v3DrawSequence == v3SelectionSequence)
+        { sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0; RequestSerialization(); }
+    }
 
 
     private int v3LatestCount;
@@ -1884,7 +1960,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void RequestDraw(int targetTab, bool initial)
     {
         if (guideV3 && onlineMode)
-        { if (!initial) { if (sharedDataSource != null) sharedDataSource._RequestSharedDraw(targetTab); else V3BeginDraw(targetTab == 1 ? 0 : 1,true); } return; }
+        { if (!initial) { if (sharedDataSource != null) sharedDataSource._RequestSharedDraw(targetTab); else _RequestSharedDraw(targetTab); } return; }
         if (sharedDataSource != null) { if (!initial) sharedDataSource._RequestSharedDraw(targetTab); return; }
         if (isSharedDataSource && Networking.LocalPlayer != null && !Networking.IsOwner(gameObject)) return;
         if (!onlineMode || !ready || (targetTab != 1 && targetTab != 3) || pendingDrawTab >= 0 || (!initial && Time.realtimeSinceStartup < drawCooldownUntil)) return;
@@ -2465,7 +2541,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         for (int i = 0; i < navImages.Length; i++) navImages[i].color = i == (favoriteTabSelected ? 4 : tab) ? selectedTabColor : cardColor;
         retryButton.gameObject.SetActive((!ready && !loading) || (ready && ((imageFailed && !imageLoading) || (sponsorImageFailed && !sponsorImageLoading) || sponsorStatusFailed || ExtraSponsorImagesFailed())));
         statusLabel.text = loading ? "読み込み中…" : failed ? "情報を取得できません。URL許可を確認して再試行。" : ready ? (imageLoading || sponsorImageLoading || ExtraSponsorImagesLoading() ? "写真を読み込んでいます…" : imageFailed || sponsorImageFailed || ExtraSponsorImagesFailed() ? "写真を取得できません。URL許可を確認して再試行。" : onlineMode ? "入室時の情報を表示しています" : "サンプル表示") : "初期データを待っています…";
-        if (ready && sponsorStatusFailed) statusLabel.text = "スポンサーの掲載確認に失敗しました。再試行できます。";
+        if (ready && sponsorStatusFailed) statusLabel.text = "スポンサーの掲載確認に失敗しました。自動で再確認します。";
+        if (guideV3 && onlineMode && v3RecoveryPending) statusLabel.text = "接続できません。自動再接続を待っています";
         sectionLabel.text = tab == 1 ? "PICKUP WORLDS" : tab == 2 ? "LATEST WORLDS" : "RANDOM DISCOVERY";
         if (!ready)
         {
@@ -2786,7 +2863,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     public void _RequestSharedDraw(int targetTab)
     {
-        if (!isSharedDataSource || (targetTab != 1 && targetTab != 3) || SharedDrawBusy() || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        if ((!isSharedDataSource && !(guideV3 && onlineMode)) || (targetTab != 1 && targetTab != 3) || SharedDrawBusy() || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
         if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _SharedDrawOnOwner(targetTab);
         else SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(_SharedDrawOnOwner), targetTab);
     }
@@ -2794,7 +2871,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [NetworkCallable(maxEventsPerSecond: 1)]
     public void _SharedDrawOnOwner(int targetTab)
     {
-        if (!isSharedDataSource || (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject))) return;
+        if ((!isSharedDataSource && !(guideV3 && onlineMode)) || (Networking.LocalPlayer != null && !Networking.IsOwner(gameObject))) return;
         if (!ready || (targetTab != 1 && targetTab != 3) || SharedDrawBusy() || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
         if (guideV3 && onlineMode) { V3BeginDraw(targetTab == 1 ? 0 : 1,true); return; }
         RequestDraw(targetTab, false);
@@ -2926,7 +3003,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool V3TelemetryAllowed()
     {
-        if (v3Maintenance || !ready || v3RequestKind != 0 || v3DrawCategory >= 0 ||
+        if (v3Maintenance || v3RecoveryPending || !ready || imageLoading || !sponsorStatusValid || v3RequestKind != 0 || v3DrawCategory >= 0 ||
             Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ServerWaitUntil ||
             Time.realtimeSinceStartup >= v3NextStatus) return false;
         for (int i = 0; i < v3WireUrls.Length; i++) if (!string.IsNullOrEmpty(v3WireUrls[i])) return false;
@@ -2938,11 +3015,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int free = -1;
         for (int i = 0; i < v3WireUrls.Length; i++)
         {
+            // At ten minutes an abandoned current/status body is older than
+            // its maximum five-minute validity. Immutable set responses still
+            // must match the currently requested bank/generation/set exactly.
+            // Reclaim orphaned slots so a lost SDK callback cannot deadlock us.
+            if (v3WireAbandoned[i] && Time.realtimeSinceStartup-v3WireStarted[i] >= 600f)
+            { v3WireUrls[i] = ""; v3WireAbandoned[i] = false; }
             if (v3WireUrls[i] == url) return false;
             if (string.IsNullOrEmpty(v3WireUrls[i])) free = i;
         }
         if (free < 0) return false;
-        v3WireUrls[free] = url; v3WireAbandoned[free] = false;
+        v3WireUrls[free] = url; v3WireAbandoned[free] = false; v3WireStarted[free] = Time.realtimeSinceStartup;
         return true;
     }
 
@@ -2982,7 +3065,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (string.IsNullOrEmpty(v3RequestGeneration)) return V3Owner() && v3RequestOwnerTerm == v3OwnerTerm;
             return v3RequestGeneration == v3SharedBaseGeneration && v3RequestBank == v3SharedBaseBank;
         }
-        if (kind == 2 || kind == 3)
+        if (kind == 2 || kind == 3 || kind == 6)
         {
             if (v3DrawCategory < 0 || v3RequestCategory != v3DrawCategory) return false;
             if (v3UserDraw && (!V3Owner() || v3RequestOwnerTerm != v3OwnerTerm || v3RequestSelectionSequence != v3SelectionSequence)) return false;
@@ -3526,7 +3609,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (key >= 0)
         {
             v3ImageRetryAt[key] = Time.realtimeSinceStartup + V3Backoff(v3ImageAttempts[key]);
-            if (v3ImageAttempts[key] >= 4) v3ManualRetryAt = Mathf.Max(v3ManualRetryAt,Time.realtimeSinceStartup+60f);
+            if (v3ImageAttempts[key] >= 4) { v3ManualRetryAt = Mathf.Max(v3ManualRetryAt,Time.realtimeSinceStartup+60f); V3ArmRecovery(); }
             if (key == v3BaseBank*32 && v3ImageAttempts[key] >= 4) { imageFailed = true; imageLoading = false; }
         }
         v3Version++;
@@ -3632,8 +3715,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         { v3RequestRetryAt = Time.realtimeSinceStartup + V3Backoff(v3RequestAttempts); return; }
         v3RequestKind = 0;
         v3ManualRetryAt = Mathf.Max(v3ManualRetryAt,Time.realtimeSinceStartup+60f);
-        if (kind == 1) { v3BootstrapStopped = true; loading = false; failed = !ready; }
-        else if (kind == 2 || kind == 3) V3FailDraw("取得に失敗しました。再抽選ボタンで再試行できます");
+        if (kind == 1) { v3BootstrapStopped = true; loading = false; failed = !ready; V3ArmRecovery(); }
+        else if (kind == 2 || kind == 3 || kind == 6) V3FailDraw("取得に失敗しました。再抽選ボタンで再試行できます");
         else if (kind == 4)
         {
             // A failed transaction has at most three retries. The normal status
@@ -3731,13 +3814,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                     v3SharedBaseGeneration = generation; v3SharedBaseBank = bank;
                     for (int c = 0; c < 2; c++)
                     {
-                        if (!string.IsNullOrEmpty(V3SharedGeneration(c))) continue;
+                        if (!string.IsNullOrEmpty(V3SharedGeneration(c)) && !V3SharedExpired(c)) continue;
                         if (c == 0) { v3SharedRecommendedGeneration = generation; v3SharedRecommendedBank = bank; v3SharedRecommendedSet = 0; v3SharedRecommendedUsed = 1; }
                         else { v3SharedRandomGeneration = generation; v3SharedRandomBank = bank; v3SharedRandomSet = 0; v3SharedRandomUsed = 1; }
                     }
                 }
                 accepted = V3ApplyBootstrap(result.Result);
-                if (accepted && V3Owner()) RequestSerialization();
+                if (accepted) { v3RecoveryBootstrap = false; if (V3Owner()) RequestSerialization(); }
             }
         }
         else if (kind == 2)
@@ -3756,6 +3839,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             accepted = v3DrawCategory == v3RequestCategory && v3TargetGeneration == v3RequestGeneration && v3TargetBank == v3RequestBank && v3TargetSet == v3RequestSet && V3SetValid(d,v3RequestCategory,v3RequestBank,v3RequestGeneration,v3RequestSet);
             if (accepted) v3PendingJson = result.Result;
+        }
+        else if (kind == 6)
+        {
+            // A valid different generation proves that this bank was recycled.
+            // Record that fact but never apply its worlds as the requested set.
+            bool registered = Integer(d,"bank",-1) == v3RequestBank && V3RegisterManifest(d);
+            accepted = registered && Str(d,"generationId") == v3RequestGeneration;
         }
         else if (kind == 4) accepted = V3LoadStatus(d,result.Result);
         else if (kind == 5) accepted = V3ResumeStatus(d,result.Result);
@@ -3830,7 +3920,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void V3BeginDraw(int category, bool user)
     {
         if (v3Maintenance || Time.realtimeSinceStartup < v3ServerWaitUntil || Time.realtimeSinceStartup < v3DrawRetryAt) return;
-        if (!V3Owner() || !ready || category < 0 || category > 1 || v3DrawCategory >= 0 || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        if (!V3Owner() || !ready || category < 0 || category > 1 || v3DrawCategory >= 0 || V3SelectionPending(0) || V3SelectionPending(1) || SharedRemaining(sharedDrawBusyEnd) > 0 || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
         v3DrawCategory = category; v3UserDraw = true; v3AwaitCatalog = true;
         v3DrawRetryAt = Time.realtimeSinceStartup+15f;
         v3DrawOwnerTerm = v3OwnerTerm; v3DrawSequence = v3SelectionSequence;
@@ -3842,7 +3932,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void V3ReceiveSelection()
     {
         if (v3Maintenance) return;
-        if (!ready || v3DrawCategory >= 0) return;
+        if (!ready) return;
+        if (v3DrawCategory >= 0)
+        {
+            int active = v3DrawCategory;
+            if (!v3UserDraw && active < 2 && (V3SharedGeneration(active) != v3TargetGeneration || V3SharedBank(active) != v3TargetBank || V3SharedSet(active) != v3TargetSet))
+            {
+                if (v3RequestKind == 3 || v3RequestKind == 6) V3CancelRequest();
+                v3DrawCategory = -1; v3PendingJson = ""; v3AwaitCatalog = false;
+            }
+            else return;
+        }
         // Match sheet loading order: pickup -> latest -> random.
         for (int step = 0; step < 3; step++)
         {
@@ -3862,11 +3962,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (!V3Hex(generation) || bank < 0 || bank >= 32 || set < 0 || set >= (c == 0 ? 8 : 16)) continue;
             if (v3DrawComplete[c] && v3DrawGenerations[c] == generation && v3DrawBanks[c] == bank && v3DrawSets[c] == set) continue;
             if (v3StoppedSelections[c] == V3SelectionKey(generation,set)) continue;
-            if (!V3BankUsable(bank,generation)) continue;
             v3DrawCategory = c; v3UserDraw = false; v3AwaitCatalog = false;
             v3TargetBank = bank; v3TargetGeneration = generation; v3TargetSet = set;
             v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup+300f;
             v3DrawOwnerTerm = v3OwnerTerm; v3DrawSequence = v3SelectionSequence;
+            v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.1f,1.5f));
             return;
         }
     }
@@ -3875,13 +3975,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         int c = v3DrawCategory;
         if (c < 0) return;
-        if (v3RequestKind == 2 || v3RequestKind == 3) V3CancelRequest();
+        if (v3RequestKind == 2 || v3RequestKind == 3 || v3RequestKind == 6) V3CancelRequest();
         v3DrawRetryAt = Mathf.Max(v3DrawRetryAt,Time.realtimeSinceStartup+30f);
         if (c < 2) drawErrors[c] = message;
         else v3LatestFailed = true;
         if (!v3UserDraw && c < 2) v3StoppedSelections[c] = V3SelectionKey(v3TargetGeneration,v3TargetSet);
         if (V3Owner() && (v3UserDraw || v3AwaitCatalog))
         { sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0; RequestSerialization(); }
+        V3FinishSharedDraw(c); V3ArmRecovery();
         v3DrawCategory = -1; v3PendingJson = ""; v3AwaitCatalog = false; v3UserDraw = false;
         v3NextMigrationAttempt = Time.realtimeSinceStartup+300f;
         v3Version++;
@@ -3898,31 +3999,27 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         DataDictionary d = V3Json(v3PendingJson,100000);
         if (d == null) { V3FailDraw("結果を読み込めませんでした"); return; }
         DataList worlds = V3List(d,"worlds");
-        bool bootstrapSet = !v3UserDraw && v3TargetGeneration == v3BaseGeneration && v3TargetSet == 0;
+        bool bootstrapSet = !v3UserDraw && (c == 2 || !V3SelectionPending(c)) && v3TargetGeneration == v3BaseGeneration && v3TargetSet == 0;
+        V3PublishSelection();
         int asset = c == 2 ? 1 : (c == 0 ? 2 : 10)+v3TargetSet;
         if (worlds.Count > 0 && !bootstrapSet && V3Texture(v3TargetBank,v3TargetGeneration,asset) == null)
         {
             if (v3ImageAttempts[v3TargetBank*32+asset] >= 4) V3FailDraw("画像取得に失敗しました。再試行できます");
             return;
         }
+        if (V3DetailPinsCategory(c)) return;
         string json = v3PendingJson;
         V3ApplyWorlds(c,worlds,v3TargetBank,v3TargetGeneration,v3TargetSet,true,Integer(d,"totalCandidates",worlds.Count));
         if (c == 2) v3LatestJson = json;
         else { v3LocalDrawJson[c] = json; v3StoppedSelections[c] = ""; }
-        if (v3UserDraw || v3AwaitCatalog)
-        {
-            int limit = c == 0 ? 8 : 16;
-            int used = v3TargetGeneration == V3SharedGeneration(c) ? (c == 0 ? v3SharedRecommendedUsed : v3SharedRandomUsed) : 0;
-            if ((used & ((1 << limit)-1)) == (1 << limit)-1) used = 0;
-            used |= 1 << v3TargetSet;
-            if (c == 0) { v3SharedRecommendedGeneration = v3TargetGeneration; v3SharedRecommendedBank = v3TargetBank; v3SharedRecommendedSet = v3TargetSet; v3SharedRecommendedUsed = used; }
-            else { v3SharedRandomGeneration = v3TargetGeneration; v3SharedRandomBank = v3TargetBank; v3SharedRandomSet = v3TargetSet; v3SharedRandomUsed = used; }
-            v3SelectionSequence++;
-            sharedDrawCooldownEnd = TimeNow()+15; sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0;
-            RequestSerialization();
-        }
+        V3FinishSharedDraw(c);
         v3DrawCategory = -1; v3PendingJson = ""; v3UserDraw = false; v3AwaitCatalog = false;
         v3Version++;
+    }
+
+    private bool V3DetailPinsCategory(int category)
+    {
+        return !isSharedDataSource && (view == 2 || (view == 3 && beforeAdView == 2)) && selected >= 64+category*64 && selected < 128+category*64;
     }
 
     private bool V3WorldAllowed(int world)
@@ -3938,8 +4035,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!v3Initialized)
         {
             v3Initialized = true;
-            v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.5f,5f));
-            nextImageRequestAt = Mathf.Max(nextImageRequestAt,Time.realtimeSinceStartup+Random.Range(.5f,5f));
+            v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.1f,.75f));
+            nextImageRequestAt = Mathf.Max(nextImageRequestAt,Time.realtimeSinceStartup+Random.Range(.1f,.75f));
             v3NextPrefetchAt = Time.realtimeSinceStartup+15f+Random.Range(0f,10f);
         }
         loading = !ready; v3Version++;
@@ -3953,6 +4050,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         v3ManualRetryAt = Time.realtimeSinceStartup+60f;
         v3NextStringAt = Time.realtimeSinceStartup+Random.Range(.5f,5f);
         v3BootstrapStopped = false; v3NextStatus = 0; v3LatestFailed = false;
+        v3RecoveryPending = false; v3RecoveryRound = 0; v3RecoveryBootstrap = V3Owner() && !ready;
         for (int i = 0; i < v3ImageAttempts.Length; i++) if (v3ImageAttempts[i] >= 4) { v3ImageAttempts[i] = 0; v3ImageRetryAt[i] = 0; }
         v3StoppedSelections[0] = ""; v3StoppedSelections[1] = "";
         imageFailed = false; failed = false; v3Version++;
@@ -3977,9 +4075,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         string expected = v3SharedBaseGeneration;
         if (expected != v3BootstrapAttemptGeneration)
         { v3BootstrapAttemptGeneration = expected; v3BootstrapStopped = false; }
-        if ((!ready || v3BaseGeneration != expected) && !v3BootstrapStopped)
+        if ((!ready || v3BaseGeneration != expected || v3RecoveryBootstrap) && !v3BootstrapStopped)
         {
-            if (string.IsNullOrEmpty(expected))
+            if (string.IsNullOrEmpty(expected) || v3RecoveryBootstrap)
             {
                 if (V3Owner()) V3QueueRequest(1,feedUrl,-1,"",-1,0);
                 else if (Time.realtimeSinceStartup >= v3NextStatus) V3QueueRequest(5,sponsorStatusUrl,-1,"",-1,0);
@@ -3994,6 +4092,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (v3DrawCategory >= 0)
         {
             if (v3AwaitCatalog) V3QueueRequest(2,feedUrl,-1,"",v3DrawCategory,0);
+            else if (!V3BankUsable(v3TargetBank,v3TargetGeneration)) V3QueueRequest(6,v3ManifestUrls[v3TargetBank],v3TargetBank,v3TargetGeneration,v3DrawCategory,v3TargetSet);
             else if (string.IsNullOrEmpty(v3PendingJson) && v3SetUrls != null && v3SetUrls.Length == 768)
             {
                 if (v3DrawCategory == 2)
@@ -4035,19 +4134,22 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             }
             return;
         }
+        if (v3SerializationPending && V3Owner() && Time.realtimeSinceStartup >= v3SerializationRetryAt)
+        { v3SerializationRetryAt = Time.realtimeSinceStartup+5f; RequestSerialization(); }
         if (v3RequestInFlight && Time.realtimeSinceStartup-v3RequestStarted > 30f) { metadataTimeoutCount++; V3RequestFailed(false); }
         if (v3ImageKey >= 0 && Time.realtimeSinceStartup-imageRequestStarted > 60f) V3ImageFailed();
-        if (v3DrawCategory >= 0 && Time.realtimeSinceStartup > v3DrawDeadline) V3FailDraw("取得がタイムアウトしました。再試行できます");
+        if (v3DrawCategory >= 0 && Time.realtimeSinceStartup > v3DrawDeadline && (string.IsNullOrEmpty(v3PendingJson) || !V3DetailPinsCategory(v3DrawCategory))) V3FailDraw("取得がタイムアウトしました。自動で再試行します");
         if (v3UserDraw && (!V3Owner() || v3DrawOwnerTerm != v3OwnerTerm))
         {
-            if (v3RequestKind == 2 || v3RequestKind == 3) V3CancelRequest();
+            if (v3RequestKind == 2 || v3RequestKind == 3 || v3RequestKind == 6) V3CancelRequest();
             V3FailDraw("管理役が変わりました。再試行できます");
         }
+        V3Recover();
         if (ready)
         {
             if (sponsorStatusValid && V3Now() >= v3StatusUntil) { sponsorStatusValid = false; sponsorStatusFailed = true; v3Version++; }
             if (RefreshSponsorAvailability()) v3Version++;
-            V3TryCommit(); V3ReceiveSelection();
+            V3ReceiveSelection(); V3TryCommit();
             V3PumpImages();
             if (view != 3) UpdateSponsorRotation();
         }
@@ -4062,6 +4164,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (source == null || !source.isSharedDataSource) return;
         bool maintenanceChanged = v3Maintenance != source.v3Maintenance;
         v3Maintenance = source.v3Maintenance; v3ServerWaitUntil = source.v3ServerWaitUntil;
+        v3RecoveryPending = source.v3RecoveryPending; v3RecoveryAt = source.v3RecoveryAt;
         if (!source.ready) { loading = source.loading; failed = source.failed; Render(); return; }
         bool detailOpen = view == 2 || view == 3 || (view == 3 && beforeAdView == 2);
         if (v3Bootstrap != source.v3Bootstrap && !(ready && detailOpen))
@@ -4191,14 +4294,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         int c = tab == 1 ? 0 : 1;
         int wait = Mathf.CeilToInt(Mathf.Max(source.SharedRemaining(source.sharedDrawCooldownEnd),Mathf.Max(source.v3DrawRetryAt,source.v3ServerWaitUntil)-Time.realtimeSinceStartup));
-        bool busy = source.SharedDrawBusy();
+        bool busy = source.SharedDrawBusy() || source.V3SelectionPending(0) || source.V3SelectionPending(1);
         reshuffleButton.interactable = ready && !busy && wait == 0;
         if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
         if (reshuffleLabel != null && v3NormalDrawFontSize > 0) reshuffleLabel.fontSize = v3NormalDrawFontSize;
         if (reshuffleLabel != null) reshuffleLabel.text = busy ? "抽選中…" : wait > 0 ? "あと " + wait + " 秒" : "再抽選";
         if (statusLabel != null)
         {
-            if (busy) statusLabel.text = "次の候補を読み込んでいます。現在の結果はそのまま閲覧できます";
+            if (source.v3RecoveryPending) statusLabel.text = "接続できません。自動再接続を待っています";
+            else if (busy) statusLabel.text = "全員共通の候補を読み込んでいます。現在の結果はそのまま閲覧できます";
             else if (!string.IsNullOrEmpty(drawErrors[c])) statusLabel.text = drawErrors[c];
             else if (drawHasResult[c]) statusLabel.text = v3DrawComplete[c] ? "全 " + drawTotalCandidates[c] + " 件から " + drawCounts[c] + " 件を表示しています" : "最初のページを表示しています。続きの情報を取得中です";
         }

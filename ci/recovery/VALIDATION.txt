@@ -1,0 +1,28 @@
+MetaRea World GUIDE 0.12.0 validation — 2026-11-01
+
+63 outage/shared-selection assertions passed in isolated Unity preview scenes.
+Includes publication before owner image download, differing client speeds, late join,
+ownership term change, image failures, exact-selection recovery, obsolete response rejection,
+missing cross-generation manifest retrieval, expired shared bank replacement, standalone
+owner request routing, duplicate requests, failed serialization retry scheduling, bounded
+recovery backoff, lost callback quarantine reclamation, open detail identity preservation,
+and returning to set zero without showing mismatched imagery.
+16 compiled Udon VM assertions passed, including timeout exhaustion and automatic bootstrap
+re-admission through the real Update entry point. No production requests issued.
+Existing regression suites: 56 stability, 47 TOP, 193 generation/image integration,
+22 maintenance/favorites UI assertions passed. Udon compilation has no errors.
+
+Network participants are simulated as independent runtime instances with serialized fields
+copied between them. This verifies application state transitions, not actual VRChat
+multi-client transport. Real PC/Android sessions and mass concurrency are not tested here.
+A server outage before a result is published keeps the previous result. A published result
+is retried without another random choice. If its leased bank is expired/recycled, only the
+owner may publish a valid replacement after a fresh catalog fetch.
+Lost text callbacks are quarantined for 600 seconds; subsequent responses still require
+fresh manifest/status timestamps or matching immutable bank/generation/set identifiers.
+Retries honor server wait/maintenance instructions and normal download pacing.
+The first text request jitter is reduced to 0.1–0.75 seconds. Initial image and publication
+status are prioritized over telemetry. Priority over unrelated world gadgets is not guaranteed.
+
+Run these editor snippets only in the intended authoring project. Local fixture/output
+paths must be adjusted on other machines. These tests are outside the distributed Assets.
