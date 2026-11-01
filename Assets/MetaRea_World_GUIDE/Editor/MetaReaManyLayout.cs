@@ -20,6 +20,7 @@ public static class MetaReaManyLayout
             g.manyVersion = true;
             g.manyButtons = new Button[4]; g.manyPictures = new RawImage[4];
             g.manyCaptions = new Text[4]; g.manyTitles = new Text[4]; g.manyAuthors = new Text[4];
+            g.manySummaries = new Text[4];
             for (int i = 0; i < 4; i++)
             {
                 var existing = g.topPanel.transform.Find("Many " + i);
@@ -32,7 +33,15 @@ public static class MetaReaManyLayout
                 g.manyCaptions[i] = card.transform.Find(caption).GetComponent<Text>();
                 g.manyTitles[i] = card.transform.Find(title).GetComponent<Text>();
                 g.manyAuthors[i] = card.transform.Find(author).GetComponent<Text>();
-                card.transform.Find(summary).gameObject.SetActive(false);
+                g.manySummaries[i] = card.transform.Find(summary).GetComponent<Text>();
+                g.manySummaries[i].gameObject.SetActive(true);
+                g.manySummaries[i].fontSize = 16;
+                g.manySummaries[i].resizeTextForBestFit = false;
+                g.manySummaries[i].lineSpacing = 1f;
+                g.manySummaries[i].alignment = TextAnchor.UpperLeft;
+                g.manySummaries[i].horizontalOverflow = HorizontalWrapMode.Wrap;
+                g.manySummaries[i].verticalOverflow = VerticalWrapMode.Truncate;
+                g.manySummaries[i].supportRichText = false;
                 g.manyCaptions[i].fontSize = 18;
                 g.manyCaptions[i].resizeTextForBestFit = true; g.manyCaptions[i].resizeTextMinSize = 15; g.manyCaptions[i].resizeTextMaxSize = 18;
                 g.manyTitles[i].fontSize = 24;
@@ -44,6 +53,7 @@ public static class MetaReaManyLayout
             g.headingTexts = g.headingTexts.Concat(g.manyTitles).Distinct().ToArray();
             g.accentTexts = g.accentTexts.Concat(g.manyCaptions).Distinct().ToArray();
             g.secondaryTexts = g.secondaryTexts.Concat(g.manyAuthors).Distinct().ToArray();
+            g.bodyTexts = g.bodyTexts.Concat(g.manySummaries).Distinct().ToArray();
             g.cardImages = g.cardImages.Concat(g.manyButtons.Select(b => b.GetComponent<Image>())).Distinct().ToArray();
             g.borderOutlines = g.GetComponentsInChildren<Outline>(true);
             foreach (var button in g.topButtons) button.gameObject.SetActive(false);

@@ -380,24 +380,64 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public Button[] manyButtons;
     [HideInInspector] public RawImage[] manyPictures;
     [HideInInspector] public Text[] manyCaptions, manyTitles, manyAuthors;
+    [HideInInspector] public Text[] manySummaries;
     private int[] manyWorlds = new int[4];
     private int selectedManySlot = -1;
+
+    private bool TopWorldAvailable(int world)
+    { return ready && CanUseWorld(world) && !sponsorOnly[world]; }
+
+    private string TopIntroduction(string description)
+    {
+        if (string.IsNullOrEmpty(description)) return "";
+        string text = description.Trim();
+        int end = text.Length;
+        for (int i = 0; i < text.Length; i++)
+        {
+            char c = text[i];
+            if (c == '\n' || c == '\r') { end = i; break; }
+            if (c == '。' || c == '！' || c == '？' || c == '!' || c == '?' ||
+                (c == '.' && (i+1 == text.Length || text[i+1] == ' ' || text[i+1] == '\n' || text[i+1] == '\r')))
+            { end = i+1; break; }
+        }
+        // Two lines at the fixed card width; keep readable text rather than
+        // shrinking a long first sentence. ASCII uses roughly half a CJK cell.
+        int units = 0, length = 0;
+        for (int i = 0; i < end; i++)
+        {
+            int next = text[i] <= 127 ? 1 : 2;
+            if (units+next > 74) break;
+            units += next; length = i+1;
+        }
+        if (length < end)
+        {
+            if (length > 0 && text[length-1] >= '\uD800' && text[length-1] <= '\uDBFF') length--;
+            return text.Substring(0,length).TrimEnd()+"…";
+        }
+        return text.Substring(0,end).Trim();
+    }
 
     private void BuildManyWorlds()
     {
         for (int i = 0; i < 4; i++) manyWorlds[i] = -1;
         if (!ready) return;
-        manyWorlds[0] = dailyOne; manyWorlds[1] = dailyTwo;
-        for (int w = 0; w < baseWorldCount; w++)
-            if (!sponsorOnly[w]) { manyWorlds[2] = w; break; }
+        manyWorlds[0] = TopWorldAvailable(dailyOne) ? dailyOne : -1;
+        manyWorlds[1] = TopWorldAvailable(dailyTwo) ? dailyTwo : -1;
+        // v3 base worlds are a daily/ad/image union, NOT introduction order.
+        // Use the same dedicated latest segment and eligibility as LATEST.
+        int latestStart = guideV3 && onlineMode ? 192 : 0;
+        int latestLength = guideV3 && onlineMode ? v3LatestCount : baseWorldCount;
+        for (int i = 0; i < latestLength; i++)
+            if (TopWorldAvailable(latestStart+i)) { manyWorlds[2] = latestStart+i; break; }
         if (onlineMode)
         {
-            if (drawCounts[0] > 0) manyWorlds[3] = 64;
+            for (int i = 0; i < drawCounts[0]; i++)
+                if (TopWorldAvailable(64+i)) { manyWorlds[3] = 64+i; break; }
         }
         else
         {
             for (int w = 0; w < baseWorldCount; w++)
-                if (!sponsorOnly[w] && recommended[w]) { manyWorlds[3] = w; break; }
+                if (TopWorldAvailable(w) && recommended[w]) { manyWorlds[3] = w; break; }
         }
     }
     private void RenderMany()
@@ -405,23 +445,40 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         BuildManyWorlds();
         for (int k = 0; k < 4; k++)
         {
-            int w = manyWorlds[k]; bool valid = ready && w >= 0;
+            int w = manyWorlds[k]; bool valid = TopWorldAvailable(w);
             bool compact = ready && sponsoredCount > 0;
             float height = compact ? 255f : 387f;
-            float photoHeight = compact ? 133f : 200f;
+            float photoHeight = compact ? 88f : 180f;
             Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
-            Place(manyCaptions[k].rectTransform, 10, photoHeight + 18, 352, 28);
-            Place(manyTitles[k].rectTransform, 10, photoHeight + 49, 352, compact ? 46 : 80);
-            Place(manyAuthors[k].rectTransform, 10, height - 29, 352, 22);
+            Place(manyCaptions[k].rectTransform, 10, photoHeight + (compact ? 12 : 18), 352, compact ? 24 : 28);
+            manyCaptions[k].fontSize = compact ? 16 : 18;
+            Place(manyTitles[k].rectTransform, 10, photoHeight + (compact ? 40 : 49), 352, compact ? 48 : 62);
+            manyTitles[k].resizeTextMinSize = compact ? 16 : 19;
+            manyTitles[k].resizeTextMaxSize = compact ? 20 : 24;
+            Place(manyAuthors[k].rectTransform, 10, height - 29, 352, 26);
             manyButtons[k].interactable = valid;
             manyCaptions[k].text = k == 0 ? "今日のランダムワールド①" : k == 1 ? "今日のランダムワールド②" : k == 2 ? "紹介最新ワールド" : "おすすめランダムワールド";
-            bool waiting = !ready ? !failed : k == 3 && onlineMode && !drawHasResult[0] && string.IsNullOrEmpty(drawErrors[0]);
-            bool loadFailed = !ready ? failed : k == 3 && onlineMode && !string.IsNullOrEmpty(drawErrors[0]);
-            manyTitles[k].text = valid ? titles[w] : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載準備中";
+            bool waiting = !ready && !failed, loadFailed = !ready && failed;
+            if (ready && k == 2 && guideV3 && onlineMode)
+            {
+                waiting = !v3LatestComplete && !v3LatestFailed && v3ListCounts[2] > v3LatestCount;
+                loadFailed = v3LatestFailed;
+            }
+            if (ready && k == 3 && onlineMode)
+            {
+                loadFailed = !string.IsNullOrEmpty(drawErrors[0]);
+                waiting = !loadFailed && (!drawHasResult[0] || (guideV3 && !v3DrawComplete[0] && v3ListCounts[0] > drawCounts[0]));
+            }
+            manyTitles[k].text = valid ? titles[w] : guideV3 && onlineMode && v3Maintenance ? "メンテナンス中" : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載対象がありません";
             manyAuthors[k].text = valid && !string.IsNullOrEmpty(authors[w]) ? "by " + authors[w] : "";
+            if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
+            {
+                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 90 : 118),352,compact ? 48 : 50);
+                manySummaries[k].text = valid ? TopIntroduction(descriptions[w]) : "";
+            }
             SetPhoto(manyPictures[k], valid ? w : -1);
-            if (!valid && ready && k == 3 && onlineMode && !drawHasResult[0])
+            if (!valid && ready && (waiting || loadFailed))
                 SetPlaceholder(manyPictures[k], waiting ? 0 : 2);
         }
     }
@@ -430,13 +487,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _Many1() { OpenMany(1); }
     public void _Many2() { OpenMany(2); }
     public void _Many3() { OpenMany(3); }
-    private void OpenMany(int slot) { if (manyVersion && slot >= 0 && slot < 4 && manyWorlds[slot] >= 0) { selectedManySlot = slot; Open(manyWorlds[slot]); } }
+    private void OpenMany(int slot) { BuildManyWorlds(); if (manyVersion && slot >= 0 && slot < 4 && TopWorldAvailable(manyWorlds[slot])) { selectedManySlot = slot; Open(manyWorlds[slot]); } }
     private int ManyPosition()
     { if (selectedManySlot >= 0 && selectedManySlot < 4 && manyWorlds[selectedManySlot] == selected) return selectedManySlot; for (int k = 0; k < 4; k++) if (manyWorlds[k] == selected) return k; return -1; }
     private bool CanStepMany(int direction)
-    { int p = ManyPosition(); if (p < 0) return false; for (int k = p + direction; k >= 0 && k < 4; k += direction) if (manyWorlds[k] >= 0) return true; return false; }
+    { BuildManyWorlds(); int p = ManyPosition(); if (p < 0) return false; for (int k = p + direction; k >= 0 && k < 4; k += direction) if (TopWorldAvailable(manyWorlds[k])) return true; return false; }
     private void StepMany(int direction)
-    { int p = ManyPosition(); if (p < 0) return; for (int k = p + direction; k >= 0 && k < 4; k += direction) if (manyWorlds[k] >= 0) { OpenMany(k); return; } }
+    { BuildManyWorlds(); int p = ManyPosition(); if (p < 0) return; for (int k = p + direction; k >= 0 && k < 4; k += direction) if (TopWorldAvailable(manyWorlds[k])) { OpenMany(k); return; } }
     private int adWorld = -1;
     private string adName = "MetaRea WORLD ARCHIVE";
     private string adCopy = "次に行く世界を、ここから。";
@@ -2422,12 +2479,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             int i = k == 0 ? dailyOne : secondSlotIsChill ? dailyChill : dailyTwo;
             topCaptions[k].text = k == 0 ? "今日のランダムワールド①" : secondSlotIsChill ? "今日のランダムチルワールド" : "今日のランダムワールド②";
-            topButtons[k].interactable = ready && i >= 0;
-            topTitles[k].text = !ready ? (failed ? "読み込みに失敗しました" : "読み込み中") : i >= 0 ? titles[i] : "本日の追加紹介はありません";
+            bool valid = TopWorldAvailable(i);
+            topButtons[k].interactable = valid;
+            topTitles[k].text = !ready ? (failed ? "読み込みに失敗しました" : "読み込み中") : valid ? titles[i] : "本日の追加紹介はありません";
             if (topAuthors != null && k < topAuthors.Length && topAuthors[k] != null)
-                topAuthors[k].text = ready && i >= 0 && !string.IsNullOrEmpty(authors[i]) ? "by " + authors[i] : "";
-            topSummaries[k].text = ready && i >= 0 ? descriptions[i] : "";
-            SetPhoto(topPictures[k], ready ? i : -1);
+                topAuthors[k].text = valid && !string.IsNullOrEmpty(authors[i]) ? "by " + authors[i] : "";
+            topSummaries[k].text = valid ? descriptions[i] : "";
+            SetPhoto(topPictures[k], valid ? i : -1);
         }
         if (view == 1) RenderWorldRows();
         UpdateLoadingIndicators();
@@ -2451,8 +2509,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 #endif
         platformNotice.text = supported ? "" : "この端末の対応は未確認、または非対応です。ポータルは生成できます。";
         int second = secondSlotIsChill ? dailyChill : dailyTwo;
-        previousWorld.interactable = sponsoredDetail ? SponsoredPosition() > 0 : tab == 0 ? selected != dailyOne && dailyOne >= 0 : Position() > 0;
-        nextWorld.interactable = sponsoredDetail ? SponsoredPosition() + 1 < sponsoredCount : tab == 0 ? selected != second && second >= 0 : Position() >= 0 && Position() + 1 < orderCount;
+        previousWorld.interactable = sponsoredDetail ? SponsoredPosition() > 0 : tab == 0 ? selected != dailyOne && TopWorldAvailable(dailyOne) : Position() > 0;
+        nextWorld.interactable = sponsoredDetail ? SponsoredPosition() + 1 < sponsoredCount : tab == 0 ? selected != second && TopWorldAvailable(second) : Position() >= 0 && Position() + 1 < orderCount;
         if (manyVersion && tab == 0 && !sponsoredDetail) { previousWorld.interactable = CanStepMany(-1); nextWorld.interactable = CanStepMany(1); }
         returnLabel.text = tab == 0 ? "TOP に戻る" : "一覧に戻る";
         adTitle.text = adName; adDescription.text = adCopy; adSponsor.text = "広告主: " + sponsor;
@@ -3409,8 +3467,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 int w = display.order[p], c = w < 128 ? 0 : 1;
                 if (V3WantRef(display.V3WorldRef(w),display.V3WorldBank(w),display.V3WorldGeneration(w))) return true;
             }
-        if (display.view == 0 && display.manyVersion && display.drawCounts[0] > 0)
-            if (V3WantRef(display.V3WorldRef(64),display.v3DrawBanks[0],display.v3DrawGenerations[0])) return true;
+        if (display.view == 0 && display.manyVersion)
+        {
+            display.BuildManyWorlds();
+            for (int i = 0; i < 4; i++)
+            {
+                int world = display.manyWorlds[i];
+                if (display.TopWorldAvailable(world) && V3WantRef(display.V3WorldRef(world),display.V3WorldBank(world),display.V3WorldGeneration(world))) return true;
+            }
+        }
         return false;
     }
 
@@ -3443,10 +3508,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (V3WantRef(v3BannerImages[ad],v3BaseBank,v3BaseGeneration)) return;
             if (V3WantRef(v3TopImages[ad],v3BaseBank,v3BaseGeneration)) return;
         }
+        // After visible demand settles: pickup -> latest -> random.
+        if (v3DrawComplete[0] && V3WantImage(v3DrawBanks[0],v3DrawGenerations[0],2+v3DrawSets[0])) return;
         if (V3WantImage(v3BaseBank,v3BaseGeneration,1)) return;
+        if (v3DrawComplete[1] && V3WantImage(v3DrawBanks[1],v3DrawGenerations[1],10+v3DrawSets[1])) return;
         if (V3WantImage(v3BaseBank,v3BaseGeneration,31)) return;
-        for (int c = 0; c < 2; c++)
-            if (v3DrawComplete[c] && V3WantImage(v3DrawBanks[c],v3DrawGenerations[c],(c == 0 ? 2 : 10)+v3DrawSets[c])) return;
         for (int ad = 0; ad < adCount; ad++)
             if (IsAdActive(ad) && V3WantRef(v3DetailImages[ad],v3BaseBank,v3BaseGeneration)) return;
     }
@@ -3614,6 +3680,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         v3LatestBank = latestBank; v3LatestGeneration = latestGeneration;
         v3BlockedWorldIds = V3Strings(V3List(d,"blockedWorldIds"),4096);
+        // A publication change can remove the first latest item. Invalidate
+        // its cached order so the tab and four-card TOP advance together.
+        if (ready)
+        {
+            cachedTabs[2] = false;
+            if (tab == 2)
+            { BuildOrder(); page = Mathf.Clamp(page,0,Mathf.Max(0,(PageItemCount()-1)/4)); }
+        }
         sponsorStatusJson = json;
         v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
         v3Version++; return true;
@@ -3769,8 +3843,21 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (v3Maintenance) return;
         if (!ready || v3DrawCategory >= 0) return;
-        for (int c = 0; c < 2; c++)
+        // Match sheet loading order: pickup -> latest -> random.
+        for (int step = 0; step < 3; step++)
         {
+            int c = step == 0 ? 0 : step == 1 ? 2 : 1;
+            if (c == 2)
+            {
+                if (!v3LatestComplete && !v3LatestFailed && V3BankUsable(v3BaseBank,v3BaseGeneration))
+                {
+                    v3DrawCategory = 2; v3UserDraw = false; v3AwaitCatalog = false;
+                    v3TargetBank = v3BaseBank; v3TargetGeneration = v3BaseGeneration; v3TargetSet = 0;
+                    v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup+300f;
+                    return;
+                }
+                continue;
+            }
             string generation = V3SharedGeneration(c); int bank = V3SharedBank(c), set = V3SharedSet(c);
             if (!V3Hex(generation) || bank < 0 || bank >= 32 || set < 0 || set >= (c == 0 ? 8 : 16)) continue;
             if (v3DrawComplete[c] && v3DrawGenerations[c] == generation && v3DrawBanks[c] == bank && v3DrawSets[c] == set) continue;
@@ -3781,12 +3868,6 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup+300f;
             v3DrawOwnerTerm = v3OwnerTerm; v3DrawSequence = v3SelectionSequence;
             return;
-        }
-        if (!v3LatestComplete && !v3LatestFailed && V3BankUsable(v3BaseBank,v3BaseGeneration))
-        {
-            v3DrawCategory = 2; v3UserDraw = false; v3AwaitCatalog = false;
-            v3TargetBank = v3BaseBank; v3TargetGeneration = v3BaseGeneration; v3TargetSet = 0;
-            v3PendingJson = ""; v3DrawDeadline = Time.realtimeSinceStartup+300f;
         }
     }
 

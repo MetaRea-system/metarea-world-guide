@@ -73,6 +73,8 @@ public static class MetaReaPlaceholderLayout
             {
                 Photo(g.manyPictures[i], Load(names[i]), true);
                 g.manyTitles[i].text = "ワールド名"; g.manyAuthors[i].text = "作者名";
+                if (g.manySummaries != null && i < g.manySummaries.Length && g.manySummaries[i] != null)
+                    g.manySummaries[i].text = "ワールドの紹介文が表示されます。";
                 g.manyCaptions[i].text = captions[i];
             }
         }

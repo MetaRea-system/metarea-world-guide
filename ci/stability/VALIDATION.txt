@@ -22,3 +22,10 @@ Separate validation: real multi-client VRChat PC/Android sessions, real long-dur
 soak and large-scale arrival-rate load tests have not been performed in this release.
 Archive patch041 provides server changes; its application is a separate deployment step.
 CDN acceleration stays disabled until administrative settings and purge support are verified.
+0.11.1 (2026-11-01): TOP latest mapping, publication eligibility and sheet priority.
+47 TOP regressions passed: latest/list/detail/portal consistency, revoked worlds,
+loading/failure/maintenance states, pickup -> latest -> random metadata order,
+shared display refresh, first-sentence extraction and compact text bounds.
+Standard and sponsored compact TOP renders visually inspected.
+56 stability assertions and 12 compiled Udon VM assertions passed again.
+Udon compilation clean. Real VRChat PC/Android testing remains separate.
