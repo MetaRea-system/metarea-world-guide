@@ -1,0 +1,24 @@
+MetaRea World GUIDE 0.11.0 validation — 2026-11-01
+Unity 2022.3.22f1, VRChat Worlds SDK 3.10.5.
+
+56 runtime assertions: absolute advertisement expiry/replay, bounded metadata requests,
+late callback rejection, owner-term rejection, overload waits, retry spam, shared visible
+texture protection, memory budget, latest recovery, late GPU callback gate.
+Includes accelerated 2000 cache insertion/eviction cycles, 2000 transport drains and a
+six-hour elapsed-time simulation. These are not six hours of device operation.
+12 assertions executed in the compiled Udon VM.
+192 existing generation/image/set-sharing assertions using Archive patch039 fixtures.
+22 maintenance/recovery/favorites UI assertions; four previews visually inspected previously,
+and the unfetched-page preview re-inspected for this release.
+14 installer assertions: fresh install, upgrades, preserved custom entry prefab/GUID,
+backup, traversal/corruption rejection and failed-write rollback.
+
+No production requests are issued by these regression snippets. Run snippets through the
+Unity editor eval interface in the intended authoring project. Fixture paths in these
+captured scripts identify the local test dataset and must be adjusted on another machine.
+They are outside Assets and excluded from the VCC package.
+
+Separate validation: real multi-client VRChat PC/Android sessions, real long-duration
+soak and large-scale arrival-rate load tests have not been performed in this release.
+Archive patch041 provides server changes; its application is a separate deployment step.
+CDN acceleration stays disabled until administrative settings and purge support are verified.

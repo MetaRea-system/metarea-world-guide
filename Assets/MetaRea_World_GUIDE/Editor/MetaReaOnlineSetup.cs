@@ -29,7 +29,7 @@ public static class MetaReaOnlineSetup
         return cachedClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.10.1";
+    public const string GuideVersion = "0.11.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -114,6 +114,7 @@ public static class MetaReaOnlineSetup
         if (guide.unifiedDisplay) MetaReaUnifiedLayout.Apply(guide);
         else if (guide.favoritesEnabled) MetaReaFavoritesLayout.Apply(guide);
         MetaReaPlaceholderLayout.Apply(guide);
+        MetaReaMaintenanceLayout.Apply(guide);
         UdonSharpEditorUtility.CopyProxyToUdon(guide);
         EditorUtility.SetDirty(guide);
     }

@@ -1,0 +1,46 @@
+using System;using System.IO;using System.Reflection;using System.Collections.Generic;using UnityEngine;using UnityEditor;using UnityEditor.SceneManagement;using UnityEngine.SceneManagement;using VRC.SDK3.Data;using VRC.SDK3.StringLoading;using VRC.SDKBase;using VRC.Udon.Common.Interfaces;using UdonSharpEditor;
+class EditorCommand {
+static BindingFlags F=BindingFlags.Instance|BindingFlags.Public|BindingFlags.NonPublic;
+static void S(object x,string n,object v)=>x.GetType().GetField(n,F).SetValue(x,v);static object G(object x,string n)=>x.GetType().GetField(n,F).GetValue(x);static object C(object x,string n,params object[] a){try{return x.GetType().GetMethod(n,F).Invoke(x,a);}catch(TargetInvocationException e){throw e.InnerException;}}
+static string fixture="C:/Users/一生/Documents/Codex/2026-10-25/t/work/v010/fixtures/";
+static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/stability/preview";
+static List<string> checks=new List<string>();
+static void Check(bool value,string name){if(!value)throw new Exception(name);checks.Add(name);}
+class Download:IVRCStringDownload{public void StartDownload(){}public void CancelDownload(){}public string Result{get;set;}public byte[] ResultBytes=>System.Text.Encoding.UTF8.GetBytes(Result);public string Error=>"";public int ErrorCode=>0;public VRCUrl Url{get;set;}public IUdonEventReceiver UdonBehaviour=>null;}
+static void Respond(MetaReaWallGuide g,int kind,string json){var url=kind==1?g.feedUrl:g.sponsorStatusUrl;C(g,"V3CancelRequest");C(g,"V3QueueRequest",kind,url,-1,"",-1,0);C(g,"V3TrackStringRequest",url.Get());S(g,"v3RequestInFlight",true);S(g,"v3RequestAttempts",1);C(g,"V3StringSuccess",new Download{Result=json,Url=url});}
+static void Capture(MetaReaWallGuide g,string file){
+var root=g.gameObject;var canvas=g.topPanel.GetComponentInParent<Canvas>();var r=(RectTransform)canvas.transform;var corners=new Vector3[4];r.GetWorldCorners(corners);var center=(corners[0]+corners[2])*.5f;
+var co=new GameObject("QA camera");SceneManager.MoveGameObjectToScene(co,root.scene);var camera=co.AddComponent<Camera>();var rt=new RenderTexture(900,1500,24);var texture=new Texture2D(900,1500,TextureFormat.RGB24,false);var previous=RenderTexture.active;
+try{camera.overrideSceneCullingMask=EditorSceneManager.GetSceneCullingMask(root.scene);camera.transform.position=center-r.forward*5;camera.transform.rotation=Quaternion.LookRotation(r.forward,r.up);camera.orthographic=true;camera.orthographicSize=(corners[1]-corners[0]).magnitude*.53f;camera.clearFlags=CameraClearFlags.SolidColor;camera.backgroundColor=new Color(.04f,.05f,.07f);camera.nearClipPlane=.01f;camera.farClipPlane=10;camera.targetTexture=rt;Canvas.ForceUpdateCanvases();camera.Render();RenderTexture.active=rt;texture.ReadPixels(new Rect(0,0,900,1500),0,0);texture.Apply();File.WriteAllBytes(output+"/"+file+".png",texture.EncodeToPNG());}finally{RenderTexture.active=previous;camera.targetTexture=null;rt.Release();UnityEngine.Object.DestroyImmediate(texture);UnityEngine.Object.DestroyImmediate(rt);UnityEngine.Object.DestroyImmediate(co);}}
+static object Execute(){checks.Clear();Directory.CreateDirectory(output);var scene=EditorSceneManager.NewPreviewScene();var textures=new List<Texture2D>();try{
+var root=(GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(MetaReaAssetsEntry.PrefabPath),scene);var u=Array.Find(root.GetComponentsInChildren<VRC.Udon.UdonBehaviour>(true),x=>UdonSharpEditor.UdonSharpEditorUtility.GetUdonSharpBehaviourType(x)==typeof(MetaReaWallGuide));var g=(MetaReaWallGuide)UdonSharpEditor.UdonSharpEditorUtility.GetProxyBehaviour(u);
+var sourceObject=new GameObject("QA shared source");SceneManager.MoveGameObjectToScene(sourceObject,scene);var source=UdonSharpUndo.AddComponent<MetaReaWallGuide>(sourceObject);source.isSharedDataSource=true;source.guideV3=true;source.onlineMode=true;source.anonymousStatistics=false;MetaReaOnlineSetup.ConfigureV3Urls(source);source.feedUrl=new VRCUrl(MetaReaOnlineSetup.FeedUrl);source.sponsorStatusUrl=new VRCUrl(MetaReaOnlineSetup.SponsorStatusUrl);source.sharedDisplays=new[]{g};
+g.sharedDataSource=source;g.anonymousStatistics=false;g.onlineMode=true;g.guideV3=true;g.favoritesEnabled=true;C(g,"InitializeDisplayMode");C(g,"_ApplyAppearance");
+string boot=File.ReadAllText(fixture+"bootstrap.json"),status=File.ReadAllText(fixture+"status-fixture.json");DataToken token;VRCJson.TryDeserializeFromJson(boot,out token);var b=token.DataDictionary;int bank=(int)b["bank"].Double;string gen=b["generationId"].String;
+g.favoriteWorldIds=new string[9];g.favoriteWorldTitles=new string[9];g.favoriteWorldAuthors=new string[9];for(int i=0;i<9;i++){g.favoriteWorldIds[i]=b["worlds"].DataList[i].DataDictionary["id"].String;g.favoriteWorldTitles[i]="お気に入りワールド "+(i+1);g.favoriteWorldAuthors[i]="プレビュー";}C(g,"BuildFavorites");
+string maintenance="{\"schema\":\"metarea-guide-maintenance-v1\",\"maintenance\":true,\"retryAfter\":60}";
+Respond(source,1,maintenance);C(g,"V3Pull");
+Check((bool)G(source,"v3Maintenance")&&g.maintenancePanel.activeSelf,"explicit maintenance response opens initial waiting screen");
+Check(!g.maintenanceNotice.activeSelf&&g.navImages[4].gameObject.activeInHierarchy,"favorites tab stays visible outside full screen notice");
+float poll=(float)G(source,"v3NextStatus")-Time.realtimeSinceStartup;Check(poll>=59&&poll<=70,"maintenance polls spaced 60-70 seconds");
+C(source,"V3ScheduleMetadata");C(source,"V3PumpImages");Check(source.feedRequestCount+source.imageRequestCount+source.statusRequestCount==0,"no downloads between maintenance probes");Capture(g,"01-initial-waiting");
+g._Favorites();Check(g.favoritesPanel.activeSelf&&!g.maintenancePanel.activeSelf&&g.maintenanceNotice.activeSelf,"favorites accessible before initial download");Check(g.favoriteButtons[0].interactable,"favorite portal button enabled offline");Capture(g,"03-favorites");
+g._FavoriteNext();Check((int)G(g,"favoritePage")==1&&g.favoriteButtons[0].interactable,"favorite pagination remains operational");g._FavoritePrevious();
+var marker=g.portalMarker;g.portalMarker=null;g._FavoritePortalOnOwner(0);Check(g.sharedPortalWorldId==g.favoriteWorldIds[0],"favorite portal selection does not require remote feed");g.portalMarker=marker;g.portalCooldownStarted=false;g.nextPortalTime=0;
+Respond(source,5,status);C(g,"V3Pull");Check(!(bool)G(source,"v3Maintenance")&&(int)G(g,"view")==4,"recovery keeps favorites screen selected");
+Respond(source,1,boot);
+var a=b["assets"].DataList[0].DataDictionary;var texture=new Texture2D(2,2);textures.Add(texture);ImageConversion.LoadImage(texture,File.ReadAllBytes(fixture+"images/0.png"));((string[])G(source,"v3CacheTokens"))[0]=a["imageToken"].String;((Texture2D[])G(source,"v3CacheTextures"))[0]=texture;S(source,"imageLoading",false);Respond(source,4,status);C(g,"V3Pull");
+Check((int)G(g,"view")==4&&!g.maintenanceNotice.activeSelf,"initial data arrival does not switch away from favorites");
+C(g,"SetTab",1);g._NextPage();Check((int)G(g,"page")==1,"cached second page selected");var beforeTexture=g.rowPictures[0].texture;string beforeTitle=g.rowTitles[0].text;int oldSet=source.v3SharedRecommendedSet;
+Respond(source,4,maintenance);C(g,"V3Pull");Check(g.rowPictures[0].texture==beforeTexture&&g.rowTitles[0].text==beforeTitle&&(int)G(g,"page")==1,"cached images titles and current page remain unchanged");
+Check(!g.reshuffleButton.interactable&&((UnityEngine.UI.Text)G(g,"reshuffleLabel")).text=="メンテナンス中","redraw button disabled with maintenance label");
+C(source,"V3BeginDraw",0,true);Check(source.v3SharedRecommendedSet==oldSet&&(int)G(source,"v3DrawCategory")==-1,"redraw cannot replace cached selection during maintenance");
+Check(!g.maintenancePanel.activeSelf&&g.maintenanceNotice.activeSelf,"cached display shows compact bottom notice");Capture(g,"02-cached-list");C(g,"Render");Capture(g,"02-cached-list");
+g._NextPage();Check(g.rowTitles[0].text=="メンテナンス中"&&!g.rows[0].GetComponent<UnityEngine.UI.Button>().interactable,"unfetched page shows maintenance explanation");Check(g.rowSummaries[0].text=="","maintenance summary stays empty");Capture(g,"04-unfetched-page");g._PreviousPage();
+S(source,"v3StatusUntil",(double)C(source,"V3Now")-1);Check(!(bool)C(source,"StatusUsable"),"advertisement expiry remains enforced during maintenance");
+S(source,"v3RequestKind",5);S(source,"v3RequestAttempts",1);C(source,"V3RequestFailed",false);Check((bool)G(source,"v3Maintenance")&&(int)G(source,"v3RequestKind")==0,"failed maintenance probe does not falsely resume or trigger retry burst");
+Respond(source,5,status);C(g,"V3Pull");Check(!(bool)G(source,"v3Maintenance")&&(int)G(g,"page")==1&&g.reshuffleButton.interactable&&!g.maintenanceNotice.activeSelf,"recovery restores redraw without changing current page");
+VRCJson.TryDeserializeFromJson("{\"error\":\"maintenance\"}",out token);Check(!(bool)C(source,"V3MaintenanceResponse",token.DataDictionary),"generic error does not claim explicit maintenance");
+Check(!UdonSharp.UdonSharpProgramAsset.AnyUdonSharpScriptHasError(),"Udon compile clean");File.WriteAllText(output+"/checks.txt",string.Join("\n",checks));return new{count=checks.Count,checks,output};
+}finally{EditorSceneManager.ClosePreviewScene(scene);foreach(var t in textures)UnityEngine.Object.DestroyImmediate(t);}}
+}
