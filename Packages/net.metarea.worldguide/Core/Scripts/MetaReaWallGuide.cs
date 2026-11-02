@@ -46,6 +46,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public string xProfileUrl = "https://x.com/metametarea";
     public GameObject xUrlPanel;
     public InputField xUrlField;
+    [Header("BOOTH")]
+    public string boothUrl = "https://metarea.booth.pm/";
+    public GameObject boothUrlPanel;
+    public InputField boothUrlField;
     [Min(5f)] public float sponsorRotationSeconds = 10f;
     [Range(.2f, 2f)] public float sponsorFadeSeconds = .8f;
     public TextAsset sampleFeed;
@@ -136,6 +140,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public Text adDescription;
     public Text adSponsor;
     public RawImage adPicture;
+    public Text adDownloadStatus;
+    public Text adQrStatus;
+    public GameObject initialLoadingPanel;
+    public Text initialLoadingLabel;
+    public CanvasGroup initialTopGroup;
     public Text bannerTitle;
     public RawImage bannerPicture;
     public Button adPortalButton;
@@ -339,6 +348,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public int statusRequestCount;
     [HideInInspector] public int imageRequestCount;
     [HideInInspector] public RawImage xIconImage;
+    [HideInInspector] public RawImage boothIconImage;
+    public Color boothIconColor = new Color(.18f,.73f,.95f,1f);
     [HideInInspector] public RawImage archiveIconImage;
     public Color xIconColor = new Color(.18f, .73f, .95f, 1f);
     public bool archiveIconUseOriginalColor = true;
@@ -634,6 +645,21 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private Text reshuffleLabel;
 
     [HideInInspector] public bool guideV3;
+    [HideInInspector] public bool preferGuideV4;
+    [HideInInspector] public VRCUrl v4FeedUrl, v4StatusUrl;
+    [HideInInspector] public VRCUrl[] v4ManifestUrls, v4SetUrls, v4LatestUrls, v4ImageUrls;
+    [UdonSynced] public int sharedGuideProtocol;
+    private bool v4Protocol, v4Layout, v4TopReady;
+    private VRCUrl v4LegacyFeed, v4LegacyStatus;
+    private string v4PendingBootstrap = "", v4PendingStatus = "";
+    private int v4PendingBank = -1;
+    private string v4PendingGeneration = "";
+    private float v4PendingStatusAt;
+    private double v4PendingUntil;
+    private int v4TopUsed, v4BannerUsed, v4LastTop = -1, v4LastBanner = -1;
+    private bool v4FirstTopCycle = true, v4FirstBannerCycle = true;
+    private DataDictionary[] v4PreviewImages = new DataDictionary[16];
+    private int v4ProbeFailures;
     [HideInInspector] public VRCUrl[] v3ManifestUrls;
     [HideInInspector] public VRCUrl[] v3SetUrls;
     [HideInInspector] public VRCUrl[] v3LatestUrls;
@@ -860,6 +886,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
         if (reshuffleButton != null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
         if (xUrlPanel != null) xUrlPanel.SetActive(false);
+        if (boothUrlPanel != null) boothUrlPanel.SetActive(false);
         if (favoritesEnabled && favoritesSettings != null)
         {
             favoriteWorldIds = favoritesSettings.favoriteWorldIds;
@@ -1045,14 +1072,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         DataToken root;
         if (!VRCJson.TryDeserializeFromJson(json, out root) || root.TokenType != TokenType.DataDictionary) return false;
         DataDictionary d = root.DataDictionary;
-        if (Str(d, "schema") != (guideV3 && onlineMode ? "metarea-guide-v3" : "metarea-wall-v1")) return false;
+        if (Str(d, "schema") != (guideV3 && onlineMode ? (v4Protocol ? "metarea-guide-v4" : "metarea-guide-v3") : "metarea-wall-v1")) return false;
         int incomingSnapshot = Integer(d, "snapshotIndex", -1);
         if (onlineMode && !guideV3 && (incomingSnapshot < 0 || atlasUrls == null || incomingSnapshot >= atlasUrls.Length)) return false;
         DataToken wt;
         if (!d.TryGetValue("worlds", TokenType.DataList, out wt)) return false;
         DataList list = wt.DataList;
         int n = list.Count;
-        if (n < 1 || n > 64) return false;
+        if (n < (v4Protocol ? 0 : 1) || n > 64) return false;
         // Validate first, so malformed responses never replace working data.
         for (int i = 0; i < n; i++)
         {
@@ -1111,7 +1138,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         adCount = 0; activeAdCount = 0; currentAd = -1; openedAd = -1; sponsoredCount = 0; sponsoredDetail = false;
         placementCount = 0; sponsorLeft = -1; sponsorRight = -1;
-        sponsorStatusProtocol = Integer(d, "sponsorStatusVersion", 0) == 1;
+        sponsorStatusProtocol = v4Protocol || Integer(d, "sponsorStatusVersion", 0) == 1;
         sponsorStatusValid = false; sponsorStatusLoading = false; sponsorStatusFailed = false;
         sponsorStatusStarted = -999f; nextSponsorStatusAttempt = 0;
         bannerAtlasV3 = Str(d, "sponsorAtlasLayout") == "banner-v3";
@@ -1148,7 +1175,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 int row = Integer(a, "bannerRow", i);
                 int bannerPage = Integer(a, "bannerPage", 0);
                 int detailCell = Integer(a, "detailImageIndex", -1);
-                if (bannerPage < 0 || bannerPage > extraSponsorPages || detailCell >= detailSponsorPages * detailCellsPerPage || detailCell > 15) continue;
+                if (!v4Protocol && (bannerPage < 0 || bannerPage > extraSponsorPages || detailCell >= detailSponsorPages * detailCellsPerPage || detailCell > 15)) continue;
                 if (bannerAtlasV2 && (row < 0 || row >= (bannerAtlasV3 ? 16 : 8))) continue;
                 adNames[adCount] = Str(a, "title"); adDescriptions[adCount] = Str(a, "description");
                 adSponsors[adCount] = Str(a, "sponsor"); adUrls[adCount] = url;
@@ -1216,7 +1243,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (duplicate) continue;
             int world = FindId(Str(p, "worldId")), ad = -1;
             for (int j = 0; j < adCount; j++) if (adIds[j] == Str(p, "adId")) ad = j;
-            if ((kind != 1 && world < 0) || (kind != 0 && ad < 0)) continue;
+            if ((kind != 1 && world < 0) || ((v4Protocol || kind != 0) && ad < 0)) continue;
             topIds[topCount] = id; topKeys[topCount] = Str(p, "contentKey"); topTypes[topCount] = kind;
             int clickSlot = Integer(p, "clickTrackingSlot", -1);
             topClickSlots[topCount] = clickSlot >= 0 && clickSlot < 4096 ? clickSlot : -1;
@@ -1236,13 +1263,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool IsTopActive(int index)
     {
         if (index < 0 || index >= topCount || !StatusUsable() || !topAllowed[index] || !InPeriod(topStarts[index], topEnds[index])) return false;
-        return topTypes[index] == 0 || IsAdActive(topAds[index]);
+        return (!v4Layout && topTypes[index] == 0) || IsAdActive(topAds[index]);
     }
 
     private bool TopPortalAvailable()
     {
         if (openedTop < 0) return IsAdActive(openedAd) && adPortalEnabled[openedAd] && CanUseWorld(adWorlds[openedAd]);
-        return topPlacementProtocol && IsTopActive(openedTop) && topTypes[openedTop] == 2 && topAds[openedTop] == openedAd && CanUseWorld(topWorlds[openedTop]);
+        return topPlacementProtocol && IsTopActive(openedTop) && (topTypes[openedTop] == 2 || (v4Layout && topTypes[openedTop] == 0)) && topAds[openedTop] == openedAd && CanUseWorld(topWorlds[openedTop]);
     }
 
     private double Number(DataDictionary d, string key)
@@ -1585,7 +1612,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (topPlacementProtocol)
         {
             if (!IsTopActive(world)) return;
-            if (topTypes[world] == 0) { RequestPortal(topWorlds[world]); return; }
+            if (topTypes[world] == 0 && !v4Layout) { RequestPortal(topWorlds[world]); return; }
             CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render();
             if (view == 3 && adPanel.activeSelf) QueueAdClick(topIds[world], topKeys[world], topClickSlots[world], 0);
             return;
@@ -2234,16 +2261,28 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (archiveUrlPanel == null) return;
         if (archiveUrlField != null) archiveUrlField.text = archiveUrl;
         if (xUrlPanel != null) xUrlPanel.SetActive(false);
+        if (boothUrlPanel != null) boothUrlPanel.SetActive(false);
         archiveUrlPanel.SetActive(!archiveUrlPanel.activeSelf);
     }
     public void _CloseArchive() { if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false); }
     public void _ToggleX()
     {
+        if (boothUrlPanel != null) boothUrlPanel.SetActive(false);
         if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
         if (xUrlPanel == null) return;
         if (xUrlField != null) xUrlField.text = xProfileUrl;
         xUrlPanel.SetActive(!xUrlPanel.activeSelf);
     }
+    public void _ToggleBooth()
+    {
+        if (boothUrlPanel == null) return;
+        bool open = !boothUrlPanel.activeSelf;
+        if (xUrlPanel != null) xUrlPanel.SetActive(false);
+        if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
+        if (boothUrlField != null) boothUrlField.text = boothUrl;
+        boothUrlPanel.SetActive(open);
+    }
+    public void _CloseBooth() { if (boothUrlPanel != null) boothUrlPanel.SetActive(false); }
     public void _CloseX() { if (xUrlPanel != null) xUrlPanel.SetActive(false); }
     public void _Recommended() { SetTab(1); }
     public void _Latest() { SetTab(2); }
@@ -2666,6 +2705,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _ApplyAppearance()
     {
         if (xIconImage != null) xIconImage.color = xIconColor;
+        if (boothIconImage != null) boothIconImage.color = boothIconColor;
         if (archiveIconImage != null) { archiveIconImage.material = archiveIconUseOriginalColor ? null : archiveIconTintMaterial; archiveIconImage.color = archiveIconUseOriginalColor ? Color.white : archiveIconColor; }
         TintTexts(headingTexts, headingColor); TintTexts(bodyTexts, bodyColor);
         TintTexts(secondaryTexts, secondaryColor); TintTexts(accentTexts, accentColor);
@@ -2717,7 +2757,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void SponsorBanner(RawImage image, int ad)
     {
         bool footer = image == bannerPicture;
-        float width = bannerAtlasV2 ? 760f : 760f / 6f;
+        float width = v4Layout || bannerAtlasV2 ? 760f : 760f / 6f;
         // TOP cards already have a 356-wide image area; do not expand them to
         // the 760-wide footer/detail coordinates.
         if (footer || image == adPicture)
@@ -2758,7 +2798,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         bool premium = TopPortalAvailable();
         float detailHeight = premium ? 566f : 641.25f;
         if (guideV3 && onlineMode)
-        { float width = detailHeight*1024f/864f; Place(adPicture.rectTransform,(760f-width)*.5f,23,width,detailHeight); V3Paint(adPicture,v3DetailImages[ad],v3BaseBank,v3BaseGeneration,false); return; }
+        {
+            if (v4Layout) detailHeight = 500f;
+            float width = detailHeight*672f/567f;
+            Place(adPicture.rectTransform,(760f-width)*.5f,v4Layout ? 70 : 23,width,detailHeight);
+            DataDictionary image = v3DetailImages[ad];
+            if (v4Layout && !V4Loaded(image) && V4Loaded(v4PreviewImages[ad])) image = v4PreviewImages[ad];
+            V3Paint(adPicture,image,v3BaseBank,v3BaseGeneration,false); return;
+        }
         int cell = adDetailCells[ad];
         if (cell >= 0 && cell < 16 && extraSponsorTextures[1 + cell / detailCellsPerPage] != null)
         {
@@ -2794,7 +2841,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                         sponsoredWorldButtons[s].interactable = IsTopActive(world);
                         sponsoredWorldTitles[s].text = topAdTitles[world];
                         if (guideV3 && onlineMode && topAds[world] >= 0 && v3TopImages[topAds[world]] != null)
-                        { Place(photo.rectTransform,8,8,356,133); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
+                        { Place(photo.rectTransform,8,8,v4Layout ? 236.44f : 356,133); if (v4Layout) photo.rectTransform.anchoredPosition = new Vector2((372f-236.44f)*.5f,-8); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
                         else if (!guideV3 && topImageIndices[world] >= 0)
                         {
                             int cell = topImageIndices[world]; int slot = 5 + cell / 8;
@@ -2824,14 +2871,24 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         adTitle.text = adNames[a]; adDescription.text = adDescriptions[a]; adSponsor.text = "広告主: " + adSponsors[a];
         SponsorDetail(a);
         bool premium = view == 3 && TopPortalAvailable();
-        float linkY = premium ? 600f : 675f;
+        float linkY = v4Layout ? 675f : premium ? 600f : 675f;
         if (sponsorQrPicture != null) Place(sponsorQrPicture.rectTransform,664,linkY,96,96);
         if (sponsorUrlField != null) Place((RectTransform)sponsorUrlField.transform,0,linkY,650,96);
         if (sponsorLinkHelp != null) Place(sponsorLinkHelp.rectTransform,10,linkY+66,630,25);
-        Place((RectTransform)adPortalButton.transform,130,711,500,62);
+        Place((RectTransform)adPortalButton.transform,v4Layout ? 388 : 130,v4Layout ? 788 : 711,v4Layout ? 372 : 500,v4Layout ? 35 : 62);
+        Transform back = adPanel.transform.Find("Ad back");
+        if (back != null) { float backWidth = v4Layout && premium ? 372 : 760; Place((RectTransform)back,0,788,backWidth,35); Text backText = back.GetComponentInChildren<Text>(); if (backText != null) Place(backText.rectTransform,0,0,backWidth,35); }
+        if (v4Layout) { Place(adPortalLabel.rectTransform,0,0,372,35); adPortalLabel.fontSize = 20; }
         if (sponsorQrPicture != null) { sponsorQrPicture.gameObject.SetActive(true); SponsorQr(a); }
         if (sponsorUrlField != null) { sponsorUrlField.gameObject.SetActive(true); sponsorUrlField.text = adUrls[a]; }
         adPortalButton.gameObject.SetActive(premium);
+        if (v4Layout)
+        {
+            adTitle.gameObject.SetActive(true); adDescription.gameObject.SetActive(true);
+            adSponsor.gameObject.SetActive(false);
+            Place(adTitle.rectTransform,10,5,740,55);
+            Place(adDescription.rectTransform,10,605,740,60);
+        }
     }
 
     private int Utf8Bytes(string text)
@@ -3188,7 +3245,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int bank = Integer(d,"bank",-1);
         string generation = Str(d,"generationId");
         DataList assets = V3List(d,"assets");
-        if (Str(d,"schema") != "metarea-guide-v3" || Integer(d,"layoutVersion",-1) != 1 || bank < 0 || bank >= 32 || !V3Hex(generation) || assets == null || assets.Count < 1 || assets.Count > 32) return false;
+        if (Str(d,"schema") != (v4Protocol ? "metarea-guide-v4" : "metarea-guide-v3") || Integer(d,"layoutVersion",-1) != (v4Protocol ? 2 : 1) || bank < 0 || bank >= 32 || !V3Hex(generation) || assets == null || assets.Count < 1 || assets.Count > 32) return false;
         bool[] seen = new bool[32];
         for (int i = 0; i < assets.Count; i++)
         {
@@ -3261,7 +3318,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (d == null || !V3RegisterManifest(d)) return false;
         int bank = Integer(d,"bank",-1); string generation = Str(d,"generationId");
         if (!V3WorldsValid(V3List(d,"worlds"),bank,generation,64) || !V3WorldsValid(V3List(d,"latestInitial"),bank,generation,8) || !V3WorldsValid(V3List(d,"recommendedInitial"),bank,generation,8) || !V3WorldsValid(V3List(d,"randomInitial"),bank,generation,8)) return false;
+        v4Layout = v4Protocol;
+        v4TopReady = false;
         if (!Parse(json)) return false;
+        v4TopReady = false;
+        v4TopUsed = 0; v4BannerUsed = 0; v4LastTop = -1; v4LastBanner = -1;
+        v4FirstTopCycle = true; v4FirstBannerCycle = true;
+        v4PreviewImages = new DataDictionary[16];
         v3Bootstrap = json; v3BaseBank = bank; v3BaseGeneration = generation;
         v3InitialWorldCount = 0; v3LatestJson = ""; v3LatestComplete = false; v3LatestFailed = false;
         DataList worlds = V3List(d,"worlds");
@@ -3277,15 +3340,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             for (int j = 0; j < adCount; j++) if (adIds[j] == Str(a,"id"))
             {
                 v3BannerImages[j] = V3Object(a,"bannerImage"); v3QrImages[j] = V3Object(a,"qrImage");
-                v3DetailImages[j] = V3Object(a,"detailImage"); v3TopImages[j] = V3Object(a,"topImage");
+                v3DetailImages[j] = V3Object(a,"detailImage"); v3TopImages[j] = V3Object(a,v4Layout ? "cardImage" : "topImage");
+                v4PreviewImages[j] = V3Object(a,"previewImage");
+                if (!V3RefValid(v4PreviewImages[j],bank,generation)) v4PreviewImages[j] = null;
                 if (!V3RefValid(v3BannerImages[j],bank,generation)) v3BannerImages[j] = null;
                 if (!V3RefValid(v3QrImages[j],bank,generation)) v3QrImages[j] = null;
                 if (!V3RefValid(v3DetailImages[j],bank,generation)) v3DetailImages[j] = null;
                 if (!V3RefValid(v3TopImages[j],bank,generation)) v3TopImages[j] = null;
             }
         }
-        v3InitialTopIds = V3Strings(V3List(d,"initialTopIds"),4);
-        v3InitialBannerIds = V3Strings(V3List(d,"initialBannerIds"),2);
+        v3InitialTopIds = V3Strings(V3List(d,v4Layout ? "initialCardIds" : "initialTopIds"),v4Layout ? 6 : 4);
+        v3InitialBannerIds = V3Strings(V3List(d,"initialBannerIds"),v4Layout ? 3 : 2);
         v3AdRotation = 0;
         for (int c = 0; c < 2; c++)
         {
@@ -3566,11 +3631,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (v3Maintenance || Time.realtimeSinceStartup < v3ServerWaitUntil) return;
         v3PassiveImages = false;
-        if (!ready || v3ImageKey >= 0 || imageRequestInFlight || v3Verifying || Time.realtimeSinceStartup < nextImageRequestAt) return;
-        if (V3WantImage(v3BaseBank,v3BaseGeneration,0)) return;
+        if (v3ImageKey >= 0 || imageRequestInFlight || v3Verifying || Time.realtimeSinceStartup < nextImageRequestAt) return;
+        if (!ready) { if (v4PendingBank >= 0) V3WantImage(v4PendingBank,v4PendingGeneration,0); return; }
         if (sharedDisplays != null)
             for (int i = 0; i < sharedDisplays.Length; i++) if (V3WantDisplay(sharedDisplays[i],true)) return;
         if (V3WantDisplay(this,true)) return;
+        if (v4PendingBank >= 0 && V3WantImage(v4PendingBank,v4PendingGeneration,0)) return;
+        if (V3WantImage(v3BaseBank,v3BaseGeneration,0)) return;
         if (!string.IsNullOrEmpty(v3PendingJson) && v3DrawCategory >= 0)
         {
             int asset = v3DrawCategory == 2 ? 1 : v3DrawCategory == 0 ? 2+v3TargetSet : 10+v3TargetSet;
@@ -3582,21 +3649,19 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (Time.realtimeSinceStartup < v3NextPrefetchAt) return;
         v3NextPrefetchAt = Time.realtimeSinceStartup+5f;
         v3PassiveImages = true;
-        // Prefetch never evicts: otherwise a bounded cache would churn forever.
-        // Rotating ads precede passive off-screen world pages. Current and first
-        // next ads are already in asset0, so this cannot delay the first turn.
+        // Prefetch does not evict active screens and follows list order.
+        if (v3DrawComplete[0] && V3WantImage(v3DrawBanks[0],v3DrawGenerations[0],2+v3DrawSets[0])) return;
+        if (V3WantImage(v3BaseBank,v3BaseGeneration,1)) return;
+        if (v3DrawComplete[1] && V3WantImage(v3DrawBanks[1],v3DrawGenerations[1],10+v3DrawSets[1])) return;
         for (int ad = 0; ad < adCount; ad++)
         {
             if (!IsAdActive(ad)) continue;
             if (V3WantRef(v3BannerImages[ad],v3BaseBank,v3BaseGeneration)) return;
             if (V3WantRef(v3TopImages[ad],v3BaseBank,v3BaseGeneration)) return;
+            if (v4Layout && !V4DetailReady(ad) && V3WantRef(v4PreviewImages[ad],v3BaseBank,v3BaseGeneration)) return;
         }
-        // After visible demand settles: pickup -> latest -> random.
-        if (v3DrawComplete[0] && V3WantImage(v3DrawBanks[0],v3DrawGenerations[0],2+v3DrawSets[0])) return;
-        if (V3WantImage(v3BaseBank,v3BaseGeneration,1)) return;
-        if (v3DrawComplete[1] && V3WantImage(v3DrawBanks[1],v3DrawGenerations[1],10+v3DrawSets[1])) return;
         if (V3WantImage(v3BaseBank,v3BaseGeneration,31)) return;
-        for (int ad = 0; ad < adCount; ad++)
+        if (!v4Layout) for (int ad = 0; ad < adCount; ad++)
             if (IsAdActive(ad) && V3WantRef(v3DetailImages[ad],v3BaseBank,v3BaseGeneration)) return;
     }
 
@@ -3663,7 +3728,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         imageRequestInFlight = false; v3Verifying = false;
         imageLoading = V3Texture(v3BaseBank,v3BaseGeneration,0) == null; imageFailed = false;
         if (!imageLoading && v3AdRotation == 0) V3AdvanceSponsors();
-        v3Version++; V3TryCommit();
+        v3Version++; V4CommitBootstrap(); V3TryCommit();
     }
 
     private float V3Backoff(int attempts)
@@ -3699,6 +3764,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int kind = v3RequestKind;
         V3AbandonStringRequest();
         v3RequestInFlight = false;
+        if (kind == 5 && v4Protocol && !ready) v4ProbeFailures++;
+        if (preferGuideV4 && v4Protocol && !ready && v4PendingBank < 0 && sharedGuideProtocol != 4 && (kind == 1 || kind == 5) && (terminal || v3RequestAttempts >= 4 || v4ProbeFailures >= 4))
+        { V3CancelRequest(); V4SelectProtocol(false); v3BootstrapStopped = false; loading = true; failed = false; v3NextStatus = 0; return; }
+        if (kind == 7 && (terminal || v3RequestAttempts >= 4))
+        { v3RequestKind = 0; v4PendingStatusAt = Time.realtimeSinceStartup+60f; return; }
         if (kind == 5)
         {
             v3RequestKind = 0; v3RequestAttempts = 0;
@@ -3728,7 +3798,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool V3LoadStatus(DataDictionary d, string json)
     {
-        if (Str(d,"schema") != "metarea-guide-status-v3") return false;
+        if (Str(d,"schema") != (v4Protocol ? "metarea-guide-status-v4" : "metarea-guide-status-v3")) return false;
         double now = Number(d,"serverTime"), until = Number(d,"validUntil");
         DataList generations = V3List(d,"generations");
         DataDictionary current = V3Object(d,"current");
@@ -3773,13 +3843,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         sponsorStatusJson = json;
         v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+        if (v4Layout && V3Texture(v3BaseBank,v3BaseGeneration,0) != null) v4TopReady = true;
         v3Version++; return true;
     }
 
     private bool V3SetValid(DataDictionary d, int category, int bank, string generation, int set)
     {
         string kind = category == 2 ? "latest" : category == 0 ? "recommended" : "random";
-        if (d == null || Str(d,"schema") != "metarea-guide-set-v3" || Str(d,"kind") != kind || Integer(d,"layoutVersion",-1) != 1 || Integer(d,"bank",-1) != bank || Str(d,"generationId") != generation || Integer(d,"setId",-1) != set) return false;
+        if (d == null || Str(d,"schema") != (v4Protocol ? "metarea-guide-set-v4" : "metarea-guide-set-v3") || Str(d,"kind") != kind || Integer(d,"layoutVersion",-1) != (v4Protocol ? 2 : 1) || Integer(d,"bank",-1) != bank || Str(d,"generationId") != generation || Integer(d,"setId",-1) != set) return false;
         DataDictionary a = V3Object(d,"asset");
         if (a == null || Integer(a,"assetId",-1) != (category == 2 ? 1 : (category == 0 ? 2 : 10)+set) || !V3RegisterAsset(bank,generation,a)) return false;
         DataList worlds = V3List(d,"worlds");
@@ -3811,6 +3882,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             {
                 if (V3Owner())
                 {
+                    sharedGuideProtocol = v4Protocol ? 4 : 3;
                     v3SharedBaseGeneration = generation; v3SharedBaseBank = bank;
                     for (int c = 0; c < 2; c++)
                     {
@@ -3819,7 +3891,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                         else { v3SharedRandomGeneration = generation; v3SharedRandomBank = bank; v3SharedRandomSet = 0; v3SharedRandomUsed = 1; }
                     }
                 }
-                accepted = V3ApplyBootstrap(result.Result);
+                accepted = v4Protocol ? V4StageBootstrap(d,result.Result) : V3ApplyBootstrap(result.Result);
                 if (accepted) { v3RecoveryBootstrap = false; if (V3Owner()) RequestSerialization(); }
             }
         }
@@ -3847,11 +3919,12 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             bool registered = Integer(d,"bank",-1) == v3RequestBank && V3RegisterManifest(d);
             accepted = registered && Str(d,"generationId") == v3RequestGeneration;
         }
+        else if (kind == 7) { accepted = V4StatusValid(d); if (accepted) { v4PendingStatus = result.Result; v4PendingStatusAt = Time.realtimeSinceStartup+30f; } }
         else if (kind == 4) accepted = V3LoadStatus(d,result.Result);
         else if (kind == 5) accepted = V3ResumeStatus(d,result.Result);
         if (!accepted) { V3RequestFailed(false); return; }
         v3RequestKind = 0; v3RequestInFlight = false; v3RequestAttempts = 0;
-        v3Version++; V3TryCommit();
+        v3Version++; V4CommitBootstrap(); V3TryCommit();
     }
 
     private int V3ChooseSet(int category, string generation)
@@ -3891,7 +3964,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool V3ResumeStatus(DataDictionary d, string json)
     {
-        if (d == null || Str(d,"schema") != "metarea-guide-status-v3") return false;
+        if (d == null || Str(d,"schema") != (v4Protocol ? "metarea-guide-status-v4" : "metarea-guide-status-v3")) return false;
         double now = Number(d,"serverTime"), until = Number(d,"validUntil");
         DataDictionary current = V3Object(d,"current");
         if (now <= 0 || until <= now || until-now > 300 || current == null || !V3Hex(Str(current,"generationId")) || Integer(current,"bank",-1) < 0 || Integer(current,"bank",-1) >= 32) return false;
@@ -3931,6 +4004,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3ReceiveSelection()
     {
+        if (!ready && preferGuideV4 && (sharedGuideProtocol == 3 || sharedGuideProtocol == 4) && v4Protocol != (sharedGuideProtocol == 4))
+        {
+            V3CancelRequest(); v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
+            V4SelectProtocol(sharedGuideProtocol == 4); v3BootstrapStopped = false; v3NextStatus = 0;
+        }
         if (v3Maintenance) return;
         if (!ready) return;
         if (v3DrawCategory >= 0)
@@ -4035,6 +4113,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!v3Initialized)
         {
             v3Initialized = true;
+            if (preferGuideV4) V4SelectProtocol(sharedGuideProtocol != 3);
             v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.1f,.75f));
             nextImageRequestAt = Mathf.Max(nextImageRequestAt,Time.realtimeSinceStartup+Random.Range(.1f,.75f));
             v3NextPrefetchAt = Time.realtimeSinceStartup+15f+Random.Range(0f,10f);
@@ -4065,6 +4144,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3ScheduleMetadata()
     {
+        if (v4PendingBank >= 0 && !v3Maintenance)
+        {
+            if (v3RequestKind != 0) { V3SendRequest(); return; }
+            if (Time.realtimeSinceStartup >= v4PendingStatusAt)
+            { V3QueueRequest(7,sponsorStatusUrl,-1,"",-1,0); V3SendRequest(); }
+            return;
+        }
         if (v3RequestKind != 0) { V3SendRequest(); return; }
         if (v3Maintenance)
         {
@@ -4105,7 +4191,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         if (V3Owner() && Time.realtimeSinceStartup >= v3NextMigrationAttempt && v3LatestGeneration != "" && sponsorStatusValid)
         {
-            if (V3NearExpiry(v3BaseBank,v3BaseGeneration) && v3BaseGeneration != v3LatestGeneration && !v3BootstrapStopped)
+            if ((v4Layout || V3NearExpiry(v3BaseBank,v3BaseGeneration)) && v3BaseGeneration != v3LatestGeneration && !v3BootstrapStopped)
             {
                 v3NextMigrationAttempt = Time.realtimeSinceStartup+300;
                 V3QueueRequest(1,feedUrl,-1,"",-1,0); V3SendRequest(); return;
@@ -4122,7 +4208,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sharedDataSource != null)
         {
             V3Pull();
-            UpdateLoadingIndicators(); UpdateDrawUi(); RenderFavorites();
+            UpdateLoadingIndicators(); UpdateDrawUi(); RenderFavorites(); V4UpdateUi();
             if (ready && gameObject.activeInHierarchy && topPanel != null && topPanel.transform.parent.gameObject.activeInHierarchy) QueueStatistics(4);
             if (portalButton != null)
             {
@@ -4145,6 +4231,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             V3FailDraw("管理役が変わりました。再試行できます");
         }
         V3Recover();
+        if (v4PendingBank >= 0) { V4CommitBootstrap(); V3PumpImages(); }
         if (ready)
         {
             if (sponsorStatusValid && V3Now() >= v3StatusUntil) { sponsorStatusValid = false; sponsorStatusFailed = true; v3Version++; }
@@ -4155,13 +4242,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         V3ScheduleMetadata();
         if (!v3Maintenance && Time.realtimeSinceStartup >= v3ServerWaitUntil) { PumpAdClicks(); PumpStatistics(); }
-        if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); }
+        if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); V4UpdateUi(); }
     }
 
     private void V3Pull()
     {
         MetaReaWallGuide source = sharedDataSource;
         if (source == null || !source.isSharedDataSource) return;
+        v4Protocol = source.v4Protocol;
         bool maintenanceChanged = v3Maintenance != source.v3Maintenance;
         v3Maintenance = source.v3Maintenance; v3ServerWaitUntil = source.v3ServerWaitUntil;
         v3RecoveryPending = source.v3RecoveryPending; v3RecoveryAt = source.v3RecoveryAt;
@@ -4191,6 +4279,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             appliedSponsorStatusVersion = source.sponsorStatusVersion; changed = true;
         }
         sponsorStatusValid = source.sponsorStatusValid; sponsorStatusFailed = source.sponsorStatusFailed;
+        if (v3BaseGeneration == source.v3BaseGeneration) v4TopReady = source.v4TopReady;
         sponsorStatusUtc = source.sponsorStatusUtc; sponsorStatusReceived = source.sponsorStatusReceived;
         if (RefreshSponsorAvailability()) changed = true;
         if (v3BaseGeneration == source.v3BaseGeneration)
@@ -4238,6 +4327,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool V3TopLoaded(int top)
     {
+        if (v4Layout) return top >= 0 && top < topCount && topAds[top] >= 0 && V4Loaded(v3TopImages[topAds[top]]) && V4DetailReady(topAds[top]);
         if (top < 0 || top >= topCount) return true;
         if (topAds[top] >= 0 && v3TopImages[topAds[top]] != null) return V3RefLoaded(v3TopImages[topAds[top]]);
         if (topTypes[top] == 0) return V3RefLoaded(V3WorldRef(topWorlds[top]));
@@ -4246,6 +4336,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3AdvanceSponsors()
     {
+        if (v4Layout) { V4AdvanceSponsors(); return; }
         int banner = -1, left = -1, right = -1;
         if (v3AdRotation < 2)
         {
@@ -4313,5 +4404,183 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     { return world < 64 || world >= 192 ? v3BaseBank : v3DrawBanks[world < 128 ? 0 : 1]; }
     private string V3WorldGeneration(int world)
     { return world < 64 || world >= 192 ? v3BaseGeneration : v3DrawGenerations[world < 128 ? 0 : 1]; }
+
+    private void V4SelectProtocol(bool modern)
+    {
+        if (ready || v4Protocol == modern) return;
+        if (v4LegacyFeed == null) { v4LegacyFeed = feedUrl; v4LegacyStatus = sponsorStatusUrl; }
+        VRCUrl[] swap = v3ManifestUrls; v3ManifestUrls = v4ManifestUrls; v4ManifestUrls = swap;
+        swap = v3LatestUrls; v3LatestUrls = v4LatestUrls; v4LatestUrls = swap;
+        swap = v3SetUrls; v3SetUrls = v4SetUrls; v4SetUrls = swap;
+        swap = v3ImageUrls; v3ImageUrls = v4ImageUrls; v4ImageUrls = swap;
+        feedUrl = modern ? v4FeedUrl : v4LegacyFeed;
+        sponsorStatusUrl = modern ? v4StatusUrl : v4LegacyStatus;
+        v4Protocol = modern; v4ProbeFailures = 0;
+    }
+
+    private bool V4StageBootstrap(DataDictionary d, string json)
+    {
+        int bank = Integer(d,"bank",-1); string generation = Str(d,"generationId");
+        if (!V3WorldsValid(V3List(d,"worlds"),bank,generation,64) ||
+            !V3WorldsValid(V3List(d,"latestInitial"),bank,generation,8) ||
+            !V3WorldsValid(V3List(d,"recommendedInitial"),bank,generation,8) ||
+            !V3WorldsValid(V3List(d,"randomInitial"),bank,generation,8)) return false;
+        DataList ads = V3List(d,"ads");
+        if (ads == null || ads.Count > 16) return false;
+        string[] refs = new string[] { "cardImage", "bannerImage", "previewImage", "detailImage", "qrImage" };
+        for (int i = 0; i < ads.Count; i++)
+        {
+            if (ads[i].TokenType != TokenType.DataDictionary) return false;
+            DataDictionary ad = ads[i].DataDictionary;
+            if (string.IsNullOrEmpty(Str(ad,"id")) || Str(ad,"contentKey").Length != 64 || !ValidPeriod(ad)) return false;
+            for (int j = 0; j < refs.Length; j++) if (!V3RefValid(V3Object(ad,refs[j]),bank,generation)) return false;
+        }
+        v4PendingBootstrap = json; v4PendingBank = bank; v4PendingGeneration = generation;
+        v4PendingUntil = Number(d,"validUntil"); v4PendingStatus = ""; v4PendingStatusAt = 0;
+        loading = !ready; failed = false; return true;
+    }
+
+    private bool V4StatusValid(DataDictionary d)
+    {
+        if (d == null || Str(d,"schema") != "metarea-guide-status-v4" || Integer(d,"layoutVersion",-1) != 2) return false;
+        double now = Number(d,"serverTime"), until = Number(d,"validUntil"), clock = V3Now();
+        if (now <= 0 || until <= now || until-now > 300 || until <= clock || now < sponsorStatusUtc || (clock > 0 && now > clock+120)) return false;
+        DataList ads = V3List(d,"ads"), tops = V3List(d,"topPlacements"), worlds = V3List(d,"sponsoredWorlds"), generations = V3List(d,"generations");
+        if (ads == null || tops == null || worlds == null || !ValidStatusList(ads) || !ValidStatusList(tops) || !ValidStatusList(worlds) || generations == null || generations.Count > 32) return false;
+        DataDictionary current = V3Object(d,"current");
+        if (current == null || !V3Hex(Str(current,"generationId")) || Integer(current,"bank",-1) < 0 || Integer(current,"bank",-1) >= 32) return false;
+        bool found = false; bool[] seen = new bool[32];
+        for (int i = 0; i < generations.Count; i++)
+        {
+            if (generations[i].TokenType != TokenType.DataDictionary) return false;
+            DataDictionary g = generations[i].DataDictionary;
+            int bank = Integer(g,"bank",-1); double expiry = Number(g,"expiresAtUnix");
+            if (bank < 0 || bank >= 32 || seen[bank] || !V3Hex(Str(g,"generationId")) || expiry < 0) return false;
+            seen[bank] = true;
+            if (bank == v4PendingBank && Str(g,"generationId") == v4PendingGeneration && (expiry == 0 || expiry > clock)) found = true;
+        }
+        return found;
+    }
+
+    private void V4CommitBootstrap()
+    {
+        if (v4PendingBank < 0 || v3Maintenance) return;
+        if ((!string.IsNullOrEmpty(v3SharedBaseGeneration) && (v3SharedBaseGeneration != v4PendingGeneration || v3SharedBaseBank != v4PendingBank)) || V3Now() >= v4PendingUntil)
+        {
+            v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
+            v3BootstrapStopped = false; v3RecoveryBootstrap = true; return;
+        }
+        if (!V3BankUsable(v4PendingBank,v4PendingGeneration)) return;
+        if (V3Texture(v4PendingBank,v4PendingGeneration,0) == null) return;
+        DataDictionary status = V3Json(v4PendingStatus,300000);
+        if (!V4StatusValid(status)) { v4PendingStatus = ""; return; }
+        if (!isSharedDataSource && ready && (view == 2 || view == 3)) return;
+        string json = v4PendingBootstrap, statusJson = v4PendingStatus;
+        if (!V3ApplyBootstrap(json)) return;
+        if (!V3LoadStatus(status,statusJson)) return;
+        v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
+        v4TopReady = true; v3RecoveryBootstrap = false;
+        RefreshSponsorAvailability(); if (v3AdRotation == 0) V4AdvanceSponsors(); v3Version++;
+        if (V3Owner()) RequestSerialization();
+    }
+
+    private bool V4Loaded(DataDictionary reference)
+    { return reference != null && V3Texture(v3BaseBank,v3BaseGeneration,Integer(reference,"assetId",-1)) != null; }
+
+    private bool V4DetailReady(int ad)
+    { return ad >= 0 && ad < adCount && (V4Loaded(v4PreviewImages[ad]) || V4Loaded(v3DetailImages[ad])); }
+
+    private bool V4InitialMember(bool top, int candidate)
+    {
+        string id = top ? topIds[candidate] : adIds[candidate];
+        string[] selectedIds = top ? v3InitialTopIds : v3InitialBannerIds;
+        for (int i = 0; i < selectedIds.Length; i++) if (selectedIds[i] == id) return true;
+        return false;
+    }
+
+    private bool V4Eligible(bool top, int candidate)
+    {
+        if (top) return IsTopActive(candidate) && V3TopLoaded(candidate);
+        return IsAdActive(candidate) && adShowInBanner[candidate] && V4Loaded(v3BannerImages[candidate]) && V4DetailReady(candidate);
+    }
+
+    private int V4Pick(bool top, int exclude)
+    {
+        int total = top ? topCount : adCount;
+        int used = top ? v4TopUsed : v4BannerUsed;
+        int last = top ? v4LastTop : v4LastBanner;
+        bool first = top ? v4FirstTopCycle : v4FirstBannerCycle;
+        for (int pass = 0; pass < 2; pass++)
+        {
+            int available = 0;
+            for (int i = 0; i < total; i++)
+                if (i != exclude && (used & (1 << i)) == 0 && (!first || V4InitialMember(top,i)) && V4Eligible(top,i)) available++;
+            if (available > 0)
+            {
+                // Avoid immediate repeats when another unused candidate exists.
+                bool skipLast = available > 1;
+                int count = 0;
+                for (int i = 0; i < total; i++)
+                    if (i != exclude && (!skipLast || i != last) && (used & (1 << i)) == 0 && (!first || V4InitialMember(top,i)) && V4Eligible(top,i)) count++;
+                int pick = Random.Range(0,count);
+                for (int i = 0; i < total; i++)
+                {
+                    if (i == exclude || (skipLast && i == last) || (used & (1 << i)) != 0 || (first && !V4InitialMember(top,i)) || !V4Eligible(top,i)) continue;
+                    if (pick-- != 0) continue;
+                    if (top) { v4TopUsed = used | (1 << i); v4LastTop = i; v4FirstTopCycle = first; }
+                    else { v4BannerUsed = used | (1 << i); v4LastBanner = i; v4FirstBannerCycle = first; }
+                    return i;
+                }
+            }
+            used = 0; first = false;
+        }
+        return -1;
+    }
+
+    private void V4AdvanceSponsors()
+    {
+        if (!StatusUsable()) { currentAd = -1; sponsorLeft = -1; sponsorRight = -1; return; }
+        if (!v4TopReady) return;
+        int banner = V4Pick(false,-1), left = V4Pick(true,-1), right = V4Pick(true,left);
+        currentAd = banner; sponsorLeft = left; sponsorRight = right;
+        v3AdRotation++; sponsorRotationReady = false;
+        nextSponsorRotation = Time.time+Mathf.Max(5f,sponsorRotationSeconds); v3Version++;
+    }
+
+    private string V4DownloadLabel(DataDictionary reference, string prefix)
+    {
+        if (reference == null) return prefix+"を取得できません";
+        if (V4Loaded(reference)) return "";
+        MetaReaWallGuide source = sharedDataSource != null ? sharedDataSource : this;
+        int id = Integer(reference,"assetId",-1), key = v3BaseBank*32+id;
+        if (id < 0 || key < 0 || key >= source.v3ImageAttempts.Length) return prefix+"を取得できません";
+        string dots = (int)(Time.unscaledTime*2f)%3 == 0 ? "." : (int)(Time.unscaledTime*2f)%3 == 1 ? ".." : "...";
+        if (source.v3ImageKey == key && source.v3ImageGeneration == v3BaseGeneration) return prefix+"DL中"+dots;
+        if (source.v3ImageAttempts[key] >= 4 || (source.v3ImageAttempts[key] > 0 && Time.realtimeSinceStartup < source.v3ImageRetryAt[key])) return prefix+"を再取得予定";
+        return prefix+"DL待機中"+dots;
+    }
+
+    private void V4UpdateUi()
+    {
+        bool modern = v4Protocol && onlineMode && guideV3;
+        bool gated = modern && !v4TopReady;
+        if (initialTopGroup != null)
+        { initialTopGroup.alpha = gated ? 0 : 1; initialTopGroup.interactable = !gated; initialTopGroup.blocksRaycasts = !gated; }
+        if (initialLoadingPanel != null) initialLoadingPanel.SetActive(gated && view == 0);
+        if (initialLoadingLabel != null && gated) initialLoadingLabel.text = failed || imageFailed ? "取得できませんでした。自動で再試行します…" : "TOPを読み込んでいます…";
+        bool detail = modern && v4Layout && view == 3 && IsAdActive(openedAd);
+        if (sponsorQrPicture != null) sponsorQrPicture.enabled = !detail || V4Loaded(v3QrImages[openedAd]);
+        if (adDownloadStatus != null)
+        {
+            adDownloadStatus.gameObject.SetActive(detail);
+            adDownloadStatus.text = detail ? V4DownloadLabel(v3DetailImages[openedAd],"高画質版") : "";
+        }
+        if (adQrStatus != null)
+        {
+            adQrStatus.gameObject.SetActive(detail && !V4Loaded(v3QrImages[openedAd]));
+            adQrStatus.text = detail ? V4DownloadLabel(v3QrImages[openedAd],"QR").Replace("DL","読込") : "";
+        }
+        if (v4Layout && currentAd < 0 && activeAdCount > 0) SetPlaceholder(bannerPicture,0);
+    }
 
 }

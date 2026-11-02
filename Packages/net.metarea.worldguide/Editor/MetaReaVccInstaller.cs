@@ -7,189 +7,173 @@ using System.Security.Cryptography;
 using UnityEditor;
 using UnityEngine;
 
-// This is the only code kept in the VCC package. All guide assets and scripts
-// are installed below Assets, with their original GUIDs.
+// Bootstrap imports first. The hidden payload is installed into Packages only
+// AFTER the legacy Assets copies are retired, avoiding duplicate GUID/classes.
 [InitializeOnLoad]
 public static class MetaReaVccInstaller
 {
-    const string PackageRoot = "Packages/net.metarea.worldguide";
+    public const string PackageRoot = "Packages/net.metarea.worldguide";
     public const string AssetRoot = "Assets/MetaRea_World_GUIDE";
+    const string LegacyRoot = "Assets/MetaRea World GUIDE";
+    public const string CoreRoot = PackageRoot + "/Core";
     const string StatePath = "ProjectSettings/MetaReaWorldGuideInstall.json";
-    const string Entry = "MetaRea World GUIDE.prefab";
-    static bool queued;
-    static bool force;
-
+    const string JournalPath = "ProjectSettings/MetaReaWorldGuideMigration.json";
+    static bool queued, force;
     [Serializable] public class FileRecord { public string path; public string sha256; }
-    [Serializable] public class Manifest { public string version; public string payloadSha256; public FileRecord[] files; }
-    [Serializable] public class InstallState { public string version; public string payloadSha256; public FileRecord[] files; }
+    [Serializable] public class Manifest { public int layout; public string version; public string payloadSha256; public FileRecord[] files; public FileRecord[] legacyFiles; }
+    [Serializable] public class InstallState { public int layout; public string version; public string payloadSha256; public FileRecord[] files; }
+    [Serializable] public class UndoRecord { public string path; public bool existed; public string backupFile; }
+    [Serializable] public class Journal { public string backup; public List<UndoRecord> changes = new List<UndoRecord>(); }
 
     static MetaReaVccInstaller() { Schedule(); }
-    static void Schedule()
-    {
-        if (queued) return;
-        queued = true;
-        EditorApplication.delayCall += InstallWhenReady;
-    }
-
+    static void Schedule() { if (queued) return; queued = true; EditorApplication.delayCall += InstallWhenReady; }
     static void InstallWhenReady()
     {
         queued = false;
-        if (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlayingOrWillChangePlaymode)
-        { Schedule(); return; }
-        string manifestPath = PackageRoot + "/Payload~/manifest.json";
-        if (!File.Exists(manifestPath)) return; // Authoring checkout, before packaging.
+        if (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlayingOrWillChangePlaymode) { Schedule(); return; }
+        string path = PackageRoot + "/Payload~/manifest.json";
+        if (!File.Exists(path)) return;
         try
         {
-            var manifest = JsonUtility.FromJson<Manifest>(File.ReadAllText(manifestPath));
+            var manifest = JsonUtility.FromJson<Manifest>(File.ReadAllText(path));
             var state = File.Exists(StatePath) ? JsonUtility.FromJson<InstallState>(File.ReadAllText(StatePath)) : null;
-            if (!force && state != null && state.payloadSha256 == manifest.payloadSha256 &&
-                File.Exists(AssetRoot + "/Scripts/MetaReaWallGuide.cs") && File.Exists(AssetRoot + "/" + Entry)) return;
-            force = false;
+            if (!force && !File.Exists(JournalPath) && state != null && state.layout == 2 && state.payloadSha256 == manifest.payloadSha256 && manifest.files.All(f => File.Exists(f.path))) return;
+            force = false; string backup;
             AssetDatabase.StartAssetEditing();
-            string backup;
             try { backup = InstallFiles(Directory.GetCurrentDirectory(), PackageRoot + "/Payload~/files.zip", manifest); }
             finally { AssetDatabase.StopAssetEditing(); }
             AssetDatabase.Refresh();
-            Debug.Log("MetaRea World GUIDE " + manifest.version + ": " + AssetRoot + " に配置しました。" +
-                (string.IsNullOrEmpty(backup) ? "" : " 変更前のファイル: " + backup));
+            Debug.Log("MetaRea World GUIDE " + manifest.version + ": 本体はPackages、設置用プレハブとUserContentはAssetsです。変更前のバックアップ: " + backup);
         }
-        catch (Exception error)
-        {
-            Debug.LogError("MetaRea World GUIDE: Assetsへの配置を完了できませんでした。" + error.Message +
-                "\n原因を解消後、MetaRea → Assetsへの配置を再試行 を実行してください。");
-        }
+        catch (Exception e) { Debug.LogError("MetaRea World GUIDE: 移行を完了できませんでした。変更は復元します。\n" + e.Message + "\n原因を解消後、MetaRea → パッケージ配置を再試行 を実行してください。"); }
     }
-
-    [MenuItem("MetaRea/Assetsへの配置を再試行")]
+    [MenuItem("MetaRea/パッケージ配置を再試行")]
     public static void Retry() { force = true; Schedule(); }
-
     public static string HashFile(string path)
     {
-        using (var hash = SHA256.Create())
-        using (var stream = File.OpenRead(path))
+        using (var hash = SHA256.Create()) using (var stream = File.OpenRead(path))
             return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
     }
-
     static string SafePath(string root, string relative)
     {
-        if (string.IsNullOrEmpty(relative) || relative.Contains("\\") || Path.IsPathRooted(relative) ||
-            relative.Split('/').Any(p => p == ".." || p == "." || p.Length == 0) ||
-            relative.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) || relative.IndexOf(':') >= 0)
-            throw new IOException("不正な配布パス: " + relative);
+        if (string.IsNullOrEmpty(relative) || relative.Contains("\\") || Path.IsPathRooted(relative) || relative.IndexOf(':') >= 0 || relative.Split('/').Any(p => p == ".." || p == "." || p.Length == 0)) throw new IOException("不正な配置パス: " + relative);
         string fullRoot = Path.GetFullPath(root).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
         string target = Path.GetFullPath(Path.Combine(root, relative));
         if (!target.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase)) throw new IOException("配置先が範囲外です。");
-        for (string parent = Path.GetDirectoryName(target); parent != null && parent.Length >= fullRoot.Length - 1; parent = Path.GetDirectoryName(parent))
-            if (Directory.Exists(parent) && (File.GetAttributes(parent) & FileAttributes.ReparsePoint) != 0)
-                throw new IOException("リンクされた配置先には書き込めません: " + parent);
-        if (File.Exists(target) && (File.GetAttributes(target) & FileAttributes.ReparsePoint) != 0)
-            throw new IOException("リンクされたファイルには書き込めません: " + target);
+        for (string p = target; p != null && p.Length >= fullRoot.Length - 1; p = Path.GetDirectoryName(p))
+            if ((Directory.Exists(p) || File.Exists(p)) && (File.GetAttributes(p) & FileAttributes.ReparsePoint) != 0) throw new IOException("リンクされた配置先には書き込めません: " + p);
         return target;
     }
-
-    static bool PreserveEntry(string relative) { return relative == Entry || relative == Entry + ".meta"; }
-
-    // Filesystem-only core, also exercised against an isolated test project.
-    // Validate the entire payload before touching Assets. Back up changes and
-    // roll them back if a write fails; publish the state only after success.
+    static bool ManagedTarget(string path)
+    {
+        return path.StartsWith(CoreRoot + "/", StringComparison.Ordinal) || path == CoreRoot + ".meta" || path == AssetRoot + "/README.txt" || path == AssetRoot + "/README.txt.meta";
+    }
+    static void BeforeChange(string project, Journal journal, string relative)
+    {
+        if (journal.changes.Any(c => c.path == relative)) return;
+        string target = SafePath(project, relative); bool exists = File.Exists(target);
+        string backupFile = journal.changes.Count.ToString();
+        if (exists)
+        {
+            string saved = SafePath(SafePath(project, journal.backup), backupFile);
+            Directory.CreateDirectory(Path.GetDirectoryName(saved)); File.Copy(target, saved, true);
+        }
+        journal.changes.Add(new UndoRecord { path = relative, existed = exists, backupFile = backupFile });
+        string path = SafePath(project, JournalPath); Directory.CreateDirectory(Path.GetDirectoryName(path));
+        File.WriteAllText(path, JsonUtility.ToJson(journal, true)); // Before mutation.
+        string backupIndex = SafePath(SafePath(project,journal.backup),"index.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(backupIndex));
+        File.WriteAllText(backupIndex,JsonUtility.ToJson(journal,true));
+    }
+    public static void Recover(string project)
+    {
+        string path = SafePath(project, JournalPath); if (!File.Exists(path)) return;
+        var journal = JsonUtility.FromJson<Journal>(File.ReadAllText(path));
+        if (journal == null || journal.backup == null || !journal.backup.StartsWith("MetaReaWorldGuideBackups/", StringComparison.Ordinal)) throw new IOException("移行記録が不正です。");
+        foreach (var change in journal.changes.AsEnumerable().Reverse())
+        {
+            if (!(change.path.StartsWith(AssetRoot + "/", StringComparison.Ordinal) || change.path.StartsWith(LegacyRoot + "/", StringComparison.Ordinal) || change.path.StartsWith(CoreRoot + "/", StringComparison.Ordinal) || change.path == CoreRoot + ".meta" || change.path == StatePath)) throw new IOException("復元対象が範囲外です。");
+            string target = SafePath(project, change.path);
+            if (change.existed)
+            {
+                string source = SafePath(SafePath(project, journal.backup), string.IsNullOrEmpty(change.backupFile) ? change.path : change.backupFile);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)); File.Copy(source, target, true);
+            }
+            else if (File.Exists(target)) File.Delete(target);
+        }
+        File.Delete(path);
+    }
+    // Filesystem-only core, tested against isolated project fixtures.
     public static string InstallFiles(string projectRoot, string zipPath, Manifest manifest)
     {
-        projectRoot = Path.GetFullPath(projectRoot);
-        if (manifest == null || manifest.files == null || string.IsNullOrEmpty(manifest.version) ||
-            !string.Equals(HashFile(zipPath), manifest.payloadSha256, StringComparison.OrdinalIgnoreCase))
-            throw new IOException("配布ファイルの整合性チェックに失敗しました。");
-        string root = Path.Combine(projectRoot, AssetRoot);
-        string statePath = Path.Combine(projectRoot, StatePath);
-        var old = File.Exists(statePath) ? JsonUtility.FromJson<InstallState>(File.ReadAllText(statePath)) : null;
-        string stage = Path.Combine(projectRoot, "Library/MetaReaWorldGuide/" + Guid.NewGuid().ToString("N"));
-        string backup = Path.Combine(projectRoot, "MetaReaWorldGuideBackups/" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 8));
-        var changed = new List<string>();
-        var created = new List<string>();
-        bool backedUp = false;
+        projectRoot = Path.GetFullPath(projectRoot); Recover(projectRoot);
+        if (manifest == null || manifest.layout != 2 || manifest.files == null || manifest.files.Length == 0 || HashFile(zipPath) != manifest.payloadSha256) throw new IOException("配布データの検証に失敗しました。");
+        var expected = new Dictionary<string, FileRecord>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in manifest.files)
+        {
+            SafePath(projectRoot, f.path);
+            if (!ManagedTarget(f.path) || f.path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase) || expected.ContainsKey(f.path)) throw new IOException("配布対象が不正です: " + f.path);
+            expected.Add(f.path, f);
+        }
+        string stage = SafePath(projectRoot, "Library/MRGStage/" + Guid.NewGuid().ToString("N").Substring(0,8));
         Directory.CreateDirectory(stage);
+        using (var archive = ZipFile.OpenRead(zipPath))
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var item in archive.Entries)
+            {
+                if (!expected.ContainsKey(item.FullName) || !seen.Add(item.FullName)) throw new IOException("ZIP内に不正なファイルがあります。");
+                string output = SafePath(stage, Array.IndexOf(manifest.files,expected[item.FullName]).ToString()); Directory.CreateDirectory(Path.GetDirectoryName(output)); item.ExtractToFile(output);
+                if (HashFile(output) != expected[item.FullName].sha256) throw new IOException("ファイルのハッシュが一致しません: " + item.FullName);
+            }
+            if (seen.Count != expected.Count) throw new IOException("配布ファイルが不足しています。");
+        }
+        string statePath = SafePath(projectRoot, StatePath);
+        var old = File.Exists(statePath) ? JsonUtility.FromJson<InstallState>(File.ReadAllText(statePath)) : null;
+        var journal = new Journal { backup = "MetaReaWorldGuideBackups/" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0,8) };
         try
         {
-            var expected = new Dictionary<string, FileRecord>(StringComparer.OrdinalIgnoreCase);
-            foreach (var record in manifest.files)
+            var legacy = new Dictionary<string, FileRecord>(StringComparer.OrdinalIgnoreCase);
+            if (manifest.legacyFiles != null) foreach (var f in manifest.legacyFiles) legacy[f.path] = f;
+            if (old != null && old.layout < 2 && old.files != null) foreach (var f in old.files) legacy[f.path] = f;
+            foreach (var f in legacy.Values)
             {
-                SafePath(root, record.path);
-                if (expected.ContainsKey(record.path)) throw new IOException("重複する配布パスです。");
-                expected.Add(record.path, record);
-            }
-            using (var zip = ZipFile.OpenRead(zipPath))
-            {
-                if (zip.Entries.Sum(e => e.Length) > 256L * 1024 * 1024) throw new IOException("配布ファイルが大きすぎます。");
-                var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                foreach (var entry in zip.Entries)
+                if (f.path == "MetaRea World GUIDE.prefab" || f.path == "MetaRea World GUIDE.prefab.meta" || f.path == "README.txt" || f.path == "README.txt.meta" || f.path.StartsWith("UserContent/", StringComparison.Ordinal)) continue;
+                foreach (string root in new[] { AssetRoot, LegacyRoot })
                 {
-                    if (!expected.ContainsKey(entry.FullName) || !seen.Add(entry.FullName)) throw new IOException("配布内容が一覧と一致しません。");
-                    string destination = SafePath(stage, entry.FullName);
-                    Directory.CreateDirectory(Path.GetDirectoryName(destination));
-                    entry.ExtractToFile(destination);
-                    if (!string.Equals(HashFile(destination), expected[entry.FullName].sha256, StringComparison.OrdinalIgnoreCase))
-                        throw new IOException("配布ファイルが破損しています: " + entry.FullName);
+                    string relative = root + "/" + f.path; string target = SafePath(projectRoot, relative);
+                    if (!File.Exists(target)) continue;
+                    BeforeChange(projectRoot, journal, relative); File.Delete(target);
                 }
-                if (seen.Count != expected.Count) throw new IOException("配布ファイルが不足しています。");
             }
-            // A legacy entry is migrated by the Assets-side helper after import.
-            // Preserve its prefab before installing a new default at the same path.
-            string legacy = Path.Combine(projectRoot, "Assets/MetaRea World GUIDE");
-            if (Directory.Exists(legacy) && !Directory.Exists(root)) Directory.Move(legacy, root);
-            string legacyMeta = legacy + ".meta";
-            if (!Directory.Exists(legacy) && File.Exists(legacyMeta) && !File.Exists(root + ".meta"))
-                File.Move(legacyMeta, root + ".meta");
-            if (Directory.Exists(legacy) && File.Exists(Path.Combine(legacy, Entry)) && !File.Exists(Path.Combine(root, Entry)))
+            if (old != null && old.layout == 2 && old.files != null) foreach (var f in old.files)
             {
-                Directory.CreateDirectory(root);
-                File.Move(Path.Combine(legacy, Entry), Path.Combine(root, Entry));
-                if (File.Exists(Path.Combine(legacy, Entry + ".meta")) && !File.Exists(Path.Combine(root, Entry + ".meta")))
-                    File.Move(Path.Combine(legacy, Entry + ".meta"), Path.Combine(root, Entry + ".meta"));
+                if (expected.ContainsKey(f.path) || !ManagedTarget(f.path)) continue;
+                string target = SafePath(projectRoot, f.path); if (!File.Exists(target)) continue;
+                BeforeChange(projectRoot, journal, f.path); File.Delete(target);
             }
-            foreach (var record in manifest.files)
+            foreach (var f in manifest.files)
             {
-                string target = SafePath(root, record.path);
-                if (File.Exists(target) && PreserveEntry(record.path)) continue;
-                // Existing document GUIDs may have been generated by 0.8.x.
-                if (File.Exists(target) && (record.path.EndsWith(".txt.meta") || record.path.EndsWith(".md.meta"))) continue;
-                if (File.Exists(target) && HashFile(target) == record.sha256) continue;
-                if (File.Exists(target))
-                {
-                    string copy = SafePath(backup, record.path);
-                    Directory.CreateDirectory(Path.GetDirectoryName(copy));
-                    File.Copy(target, copy);
-                    changed.Add(record.path); backedUp = true;
-                }
-                else created.Add(record.path);
-                Directory.CreateDirectory(Path.GetDirectoryName(target));
-                File.Copy(SafePath(stage, record.path), target, true);
+                string target = SafePath(projectRoot, f.path);
+                if (f.path == AssetRoot + "/README.txt.meta" && File.Exists(target)) continue;
+                if (File.Exists(target) && HashFile(target) == f.sha256) continue;
+                BeforeChange(projectRoot, journal, f.path); Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.Copy(SafePath(stage, Array.IndexOf(manifest.files,f).ToString()), target, true);
             }
-            // Only remove files tracked by our previous manifest. Back up even
-            // modified obsolete scripts so stale classes cannot break compilation.
-            if (old != null && old.files != null) foreach (var record in old.files)
+            Directory.CreateDirectory(SafePath(projectRoot, AssetRoot + "/UserContent"));
+            string stateJson = JsonUtility.ToJson(new InstallState { layout = 2, version = manifest.version, payloadSha256 = manifest.payloadSha256, files = manifest.files }, true);
+            if (!File.Exists(statePath) || File.ReadAllText(statePath) != stateJson)
             {
-                if (expected.ContainsKey(record.path) || PreserveEntry(record.path)) continue;
-                string target = SafePath(root, record.path);
-                if (!File.Exists(target)) continue;
-                string copy = SafePath(backup, record.path);
-                Directory.CreateDirectory(Path.GetDirectoryName(copy));
-                File.Copy(target, copy);
-                changed.Add(record.path); backedUp = true;
-                File.Delete(target);
+                BeforeChange(projectRoot, journal, StatePath);
+                File.WriteAllText(statePath, stateJson);
             }
-            Directory.CreateDirectory(Path.GetDirectoryName(statePath));
-            string nextState = statePath + ".tmp";
-            File.WriteAllText(nextState, JsonUtility.ToJson(new InstallState { version = manifest.version,
-                payloadSha256 = manifest.payloadSha256, files = manifest.files }, true));
-            if (File.Exists(statePath)) File.Replace(nextState, statePath, null);
-            else File.Move(nextState, statePath);
-            return backedUp ? backup : "";
+            if (File.Exists(SafePath(projectRoot, JournalPath))) File.Delete(SafePath(projectRoot, JournalPath));
+            return journal.changes.Count == 0 ? "" : SafePath(projectRoot, journal.backup);
         }
-        catch
+        catch { Recover(projectRoot); throw; }
+        finally
         {
-            foreach (string relative in created) { string target = SafePath(root, relative); if (File.Exists(target)) File.Delete(target); }
-            foreach (string relative in changed) File.Copy(SafePath(backup, relative), SafePath(root, relative), true);
-            throw;
+            if (Directory.Exists(stage) && stage.StartsWith(Path.GetFullPath(Path.Combine(projectRoot,"Library","MRGStage")) + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) Directory.Delete(stage, true);
         }
-        finally { if (Directory.Exists(stage)) Directory.Delete(stage, true); }
     }
 }

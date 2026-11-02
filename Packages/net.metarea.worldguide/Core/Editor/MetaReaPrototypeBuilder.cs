@@ -15,8 +15,8 @@ using Newtonsoft.Json.Linq;
 
 public static class MetaReaPrototypeBuilder
 {
-    public const string Root = "Assets/MetaRea_World_GUIDE";
-    public const string ScenePath = Root + "/Scenes/MetaReaPrototype.unity";
+    public const string Root = "Packages/net.metarea.worldguide/Core";
+    public const string ScenePath = "Assets/MetaRea_World_GUIDE/UserContent/Scenes/MetaReaPrototype.unity";
     static Font font;
     static MetaReaWallGuide guide;
     static UdonBehaviour udon;
@@ -34,7 +34,7 @@ public static class MetaReaPrototypeBuilder
         if (original.isDirty) throw new Exception("Save the current scene before creating the prototype.");
         if (File.Exists(ScenePath) && (original.path != ScenePath || GameObject.Find("MetaRea Wall Guide") != null))
             throw new Exception("Prototype scene already exists. Open it instead of overwriting it.");
-        Directory.CreateDirectory(Root+"/Scenes");
+        Directory.CreateDirectory(Path.GetDirectoryName(ScenePath));
         Directory.CreateDirectory(Root+"/Generated");
         Directory.CreateDirectory(Root+"/Prefabs");
         if (!File.Exists(ScenePath) && !EditorSceneManager.SaveScene(original,ScenePath,true)) throw new Exception("Cannot copy source scene.");

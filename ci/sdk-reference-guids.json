@@ -1,0 +1,18 @@
+{
+  "35630e38b4e5ffb40b44ec5348b4333f": "Packages/com.vrchat.worlds/Editor/VRCSDK/SDK3/VRCSuperSampledUIMaterial.mat",
+  "5136146375e9a0a498a72a0091b40cc1": "Packages/com.vrchat.worlds/Integrations/UdonSharp/Editor/UdonSharpAssemblyDefinition.cs",
+  "c333ccfdd0cbdbc4ca30cef2dd6e6b9b": "Packages/com.vrchat.worlds/Integrations/UdonSharp/Editor/UdonSharpProgramAsset.cs",
+  "45115577ef41a5b4ca741ed302693907": "Packages/com.vrchat.worlds/Runtime/Udon/UdonBehaviour.cs",
+  "bf61d954ecb803046953c666facfb904": "Packages/com.vrchat.worlds/Runtime/Udon/ProgramSources/SerializedUdonProgramAsset.cs",
+  "661092b4961be7145bfbe56e1e62337b": "Packages/com.vrchat.worlds/Runtime/VRCSDK/Plugins/VRCSDK3.dll",
+  "1344c3c82d62a2a41a3576d8abb8e3ea": "Packages/com.unity.ugui/Runtime/UI/Core/RawImage.cs",
+  "1aa08ab6e0800fa44ae55d278d1423e3": "Packages/com.unity.ugui/Runtime/UI/Core/ScrollRect.cs",
+  "3245ec927659c4140ac4f8d17403cc18": "Packages/com.unity.ugui/Runtime/UI/Core/Layout/ContentSizeFitter.cs",
+  "3312d7739989d2b4e91e6319e9a96d76": "Packages/com.unity.ugui/Runtime/UI/Core/RectMask2D.cs",
+  "4e29b1a8efbd4b44bb3f3716e73f07ff": "Packages/com.unity.ugui/Runtime/UI/Core/Button.cs",
+  "5f7201a12d95ffc409449d95f23cf332": "Packages/com.unity.ugui/Runtime/UI/Core/Text.cs",
+  "d199490a83bb2b844b9695cbf13b01ef": "Packages/com.unity.ugui/Runtime/UI/Core/InputField.cs",
+  "dc42784cf147c0c48a680349fa168899": "Packages/com.unity.ugui/Runtime/UI/Core/GraphicRaycaster.cs",
+  "e19747de3f5aca642ab2be37e372fb86": "Packages/com.unity.ugui/Runtime/UI/Core/VertexModifiers/Outline.cs",
+  "fe87c0e1cc204ed48ad3b37840f39efc": "Packages/com.unity.ugui/Runtime/UI/Core/Image.cs"
+}

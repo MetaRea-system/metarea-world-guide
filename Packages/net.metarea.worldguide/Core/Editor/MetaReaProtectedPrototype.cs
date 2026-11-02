@@ -11,7 +11,7 @@ public static class MetaReaProtectedPrototype
 {
     public static bool IsProtectedPath(string path)
     {
-        return path == "Assets/MetaRea_World_GUIDE/Internal/MetaRea World GUIDE.prefab";
+        return path == "Packages/net.metarea.worldguide/Core/Internal/MetaRea World GUIDE.prefab";
     }
     static bool queued;
 

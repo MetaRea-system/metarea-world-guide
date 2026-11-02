@@ -12,7 +12,7 @@ public static class MetaReaFavoritesLayout
     {
         if (EditorApplication.isPlaying) throw new InvalidOperationException("Stop Play mode first.");
         if (!g.favoritesEnabled) return;
-        var standard = AssetDatabase.LoadAssetAtPath<GameObject>(MetaReaPrototypeBuilder.Root + "/MetaRea World GUIDE.prefab");
+        var standard = AssetDatabase.LoadAssetAtPath<GameObject>(MetaReaAssetsEntry.SourcePath);
         if (standard == null) throw new InvalidOperationException("The standard MetaRea prefab is missing.");
         // Rebuild from the standard coordinates so repeated updates do not accumulate scaling.
         foreach (var rect in g.GetComponentsInChildren<RectTransform>(true))

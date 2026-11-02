@@ -29,7 +29,7 @@ public static class MetaReaOnlineSetup
         return cachedClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.12.0";
+    public const string GuideVersion = "0.13.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -115,6 +115,7 @@ public static class MetaReaOnlineSetup
         else if (guide.favoritesEnabled) MetaReaFavoritesLayout.Apply(guide);
         MetaReaPlaceholderLayout.Apply(guide);
         MetaReaMaintenanceLayout.Apply(guide);
+        MetaReaAdvertisingLayout.Apply(guide);
         UdonSharpEditorUtility.CopyProxyToUdon(guide);
         EditorUtility.SetDirty(guide);
     }
@@ -122,6 +123,11 @@ public static class MetaReaOnlineSetup
     public static void ConfigureV3Urls(MetaReaWallGuide guide)
     {
         guide.guideV3 = true;
+        guide.preferGuideV4 = true;
+        guide.v4FeedUrl = new VRCUrl("https://metarea.net/api/udon/guide-v4/current.json?version=" + GuideVersion);
+        guide.v4StatusUrl = new VRCUrl("https://metarea.net/api/udon/guide-v4/status.json");
+        guide.v4ManifestUrls = new VRCUrl[32]; guide.v4LatestUrls = new VRCUrl[32];
+        guide.v4SetUrls = new VRCUrl[768]; guide.v4ImageUrls = new VRCUrl[1024];
         const string root = "https://metarea.net/api/udon/guide-v3/";
         guide.v3ManifestUrls = new VRCUrl[32];
         guide.v3LatestUrls = new VRCUrl[32];
@@ -130,6 +136,11 @@ public static class MetaReaOnlineSetup
         for (int bank=0; bank<32; bank++)
         {
             string prefix=root+"banks/"+bank+"/";
+            string v4 = "https://metarea.net/api/udon/guide-v4/banks/"+bank+"/";
+            guide.v4ManifestUrls[bank] = new VRCUrl(v4+"manifest.json");
+            guide.v4LatestUrls[bank] = new VRCUrl(v4+"sets/latest/0.json");
+            for(int set=0;set<24;set++) guide.v4SetUrls[bank*24+set]=new VRCUrl(v4+"sets/"+(set<8?"recommended/"+set:"random/"+(set-8))+".json");
+            for(int image=0;image<32;image++) guide.v4ImageUrls[bank*32+image]=new VRCUrl(v4+"images/"+image+(image==0||(image>=26&&image<=30)?".png":".jpg"));
             guide.v3ManifestUrls[bank]=new VRCUrl(prefix+"manifest.json");
             guide.v3LatestUrls[bank]=new VRCUrl(prefix+"sets/latest/0.json");
             for(int set=0;set<24;set++) guide.v3SetUrls[bank*24+set]=new VRCUrl(prefix+"sets/"+(set<8?"recommended/"+set:"random/"+(set-8))+".json");

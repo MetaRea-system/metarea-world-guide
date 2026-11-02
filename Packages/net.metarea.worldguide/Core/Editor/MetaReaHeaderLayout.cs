@@ -28,7 +28,7 @@ public static class MetaReaHeaderLayout
         canvas.Find("Title").gameObject.SetActive(false);
 
         var iconTexture = AssetDatabase.LoadAssetAtPath<Texture2D>(ui + "metarea-archive-wordmark.png");
-        Rect(canvas, "Official X", 634, 108, 28, 28);
+        Rect(canvas, "Official X", 598, 108, 28, 28);
         var iconRect = Rect(canvas, "World Archive", 670, 108, 114, 28);
         var icon = iconRect.GetComponent<RawImage>() ?? iconRect.gameObject.AddComponent<RawImage>();
 
@@ -60,6 +60,30 @@ public static class MetaReaHeaderLayout
         iconRect.SetAsLastSibling();
         guide.xUrlPanel.transform.SetAsLastSibling(); overlayTransform.SetAsLastSibling();
         overlayTransform.gameObject.SetActive(false);
+        var boothRect = Rect(canvas,"Official BOOTH",634,108,28,28);
+        var boothIcon = boothRect.GetComponent<RawImage>() ?? boothRect.gameObject.AddComponent<RawImage>();
+        boothIcon.texture = AssetDatabase.LoadAssetAtPath<Texture2D>(ui + "booth-icon.png");
+        var boothMaterial = AssetDatabase.LoadAssetAtPath<Material>(ui + "MetaReaBoothTint.mat");
+        if (boothMaterial == null) { boothMaterial = new Material(Shader.Find("MetaRea/UI BOOTH Tint")); AssetDatabase.CreateAsset(boothMaterial,ui + "MetaReaBoothTint.mat"); }
+        boothIcon.material = boothMaterial; boothIcon.color = guide.boothIconColor; boothIcon.raycastTarget = true;
+        guide.boothIconImage = boothIcon;
+        var boothButton = boothRect.GetComponent<Button>() ?? boothRect.gameObject.AddComponent<Button>();
+        boothButton.targetGraphic = boothIcon; boothButton.transition = Selectable.Transition.None;
+        boothButton.navigation = new Navigation { mode = Navigation.Mode.None };
+        Wire(boothButton,udon,"_ToggleBooth");
+        var boothOverlay = canvas.Find("BOOTH URL overlay");
+        if (boothOverlay == null) { var clone = Object.Instantiate(guide.xUrlPanel,canvas,false); clone.name = "BOOTH URL overlay"; boothOverlay = clone.transform; }
+        ((RectTransform)boothOverlay).sizeDelta = ((RectTransform)canvas).sizeDelta;
+        guide.boothUrlPanel = boothOverlay.gameObject;
+        guide.boothUrlField = boothOverlay.Find("Card/X URL").GetComponent<InputField>();
+        guide.boothUrlField.text = guide.boothUrl;
+        boothOverlay.Find("Card/X heading").GetComponent<Text>().text = "MetaRea の BOOTH";
+        boothOverlay.Find("Card/X help").GetComponent<Text>().text = "URLをブラウザーに入力してショップをご覧ください。";
+        Wire(boothOverlay.GetComponent<Button>(),udon,"_CloseBooth");
+        Wire(boothOverlay.Find("Card/Close").GetComponent<Button>(),udon,"_CloseBooth");
+        boothRect.SetAsLastSibling();
+        guide.xUrlPanel.transform.SetAsLastSibling(); overlayTransform.SetAsLastSibling(); boothOverlay.SetAsLastSibling();
+        boothOverlay.gameObject.SetActive(false);
         guide._ApplyAppearance();
         UdonSharpEditorUtility.CopyProxyToUdon(guide);
         EditorUtility.SetDirty(guide);

@@ -5,14 +5,14 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 
 // The root variant is the user-facing entry point. Its source and every
-// dependency also live under Assets/MetaRea_World_GUIDE.
+// dependencies live in the VCC package; user overrides remain in Assets.
 [InitializeOnLoad]
 public static class MetaReaAssetsEntry
 {
     public const string Folder = "Assets/MetaRea_World_GUIDE";
     const string LegacyFolder = "Assets/MetaRea World GUIDE";
     public const string PrefabPath = Folder + "/MetaRea World GUIDE.prefab";
-    public const string SourcePath = "Assets/MetaRea_World_GUIDE/Internal/MetaRea World GUIDE.prefab";
+    public const string SourcePath = "Packages/net.metarea.worldguide/Core/Internal/MetaRea World GUIDE.prefab";
     static bool queued;
 
     static MetaReaAssetsEntry() { Schedule(); }
@@ -77,9 +77,9 @@ public static class MetaReaAssetsEntry
     {
         if (!AssetDatabase.IsValidFolder(Folder))
             AssetDatabase.CreateFolder("Assets", "MetaRea_World_GUIDE");
-        string docs = Folder + "/Documentation";
+        string docs = Folder + "/UserContent";
         if (!AssetDatabase.IsValidFolder(docs))
-            AssetDatabase.CreateFolder(Folder, "Documentation");
+            AssetDatabase.CreateFolder(Folder, "UserContent");
     }
     public static bool EnsureEntry(bool revealCreated)
     {

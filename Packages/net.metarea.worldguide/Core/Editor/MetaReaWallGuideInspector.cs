@@ -55,6 +55,7 @@ public class MetaReaWallGuideInspector : Editor
         EditorGUILayout.PropertyField(Property("guideTitleColor"), new GUIContent("WORLD GUIDE"));
         EditorGUILayout.LabelField("リンクアイコンの色", EditorStyles.boldLabel);
         EditorGUILayout.PropertyField(Property("xIconColor"), new GUIContent("X"));
+        EditorGUILayout.PropertyField(Property("boothIconColor"), new GUIContent("BOOTH"));
         EditorGUILayout.PropertyField(Property("archiveIconUseOriginalColor"), new GUIContent("アーカイブの元の色を使う"));
         EditorGUI.BeginDisabledGroup(Property("archiveIconUseOriginalColor").boolValue);
         EditorGUILayout.PropertyField(Property("archiveIconColor"), new GUIContent("ワールドアーカイブ"));

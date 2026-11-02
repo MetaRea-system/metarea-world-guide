@@ -52,8 +52,10 @@ jobs:
           echo "zipFile=${{ vars.PACKAGE_NAME }}-${{ steps.version.outputs.value }}".zip >> $GITHUB_ENV
           echo "version=${{ steps.version.outputs.value }}" >> $GITHUB_ENV
 
-      - name: Build Assets payload for VCC
-        run: python3 ci/build_vcc_payload.py
+      - name: Validate and stage Packages runtime distribution
+        run: |
+          python3 ci/build_vcc_payload.py --output "${{ runner.temp }}/metarea-distribution"
+          cp "${{ runner.temp }}/metarea-distribution/${{ env.zipFile }}" "${{ github.workspace }}/${{ env.zipFile }}"
 
       - name: Reject scene files in the distributable package
         working-directory: "${{ env.packagePath }}"
@@ -63,10 +65,7 @@ jobs:
             echo "Scene files must not be included in the MetaRea package."
             exit 1
           fi
-      # Zip the Package for release
-      - name: Create Package Zip
-        working-directory: "${{ env.packagePath }}"
-        run: zip -r "${{ github.workspace }}/${{ env.zipFile }}" .
+      # The staged ZIP intentionally imports only the migration bootstrap first.
       
       # Make a release tag of the version from the package.json file 
       - name: Create Tag

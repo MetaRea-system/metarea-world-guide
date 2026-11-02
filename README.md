@@ -1,37 +1,37 @@
 # MetaRea World GUIDE
 
-VRChatワールドに置くワールド紹介ボードです。VCCから導入・更新します。
+VRChatワールドへ配置するワールド紹介ボードです。
 
-## 導入
+## 0.13.0の配置
 
-1. [VCC配布ページ](https://metarea-system.github.io/metarea-world-guide/)からリポジトリを追加します。
-2. VCCでワールドプロジェクトへ **MetaRea World GUIDE** を追加し、Unityを開きます。
-3. 自動配置・コンパイル後、**Assets/MetaRea_World_GUIDE/MetaRea World GUIDE.prefab** をHierarchyへドラッグします。
+- **Packages/net.metarea.worldguide/Core**：動作スクリプト、内部プレハブ、画像、フォント、マテリアル、設定用Editor。
+- **Assets/MetaRea_World_GUIDE/MetaRea World GUIDE.prefab**：利用者が配置・設定するPrefab Variant。
+- **Assets/MetaRea_World_GUIDE/UserContent**：独自素材・利用者用設定。配布更新の対象外です。
+- **Assets/MetaRea_World_GUIDE/README.txt**：導入案内。
 
-[かんたんガイド](Assets/MetaRea_World_GUIDE/README.txt)に配置・設定・ワールド内操作・更新方法をまとめています。
+設置用プレハブをHierarchyへドラッグして配置します。位置・配色・お気に入りは従来の設定画面で変更できます。
 
-## 主な機能
+## 更新と移行
 
-- TOPの2枠／4枠表示と、お気に入りタブの有無を選択
-- おすすめ・ランダムの再抽選（待機15秒、複数ボード・参加者で共通）
-- ワールドの紹介、ポータル作成、設置者が登録するお気に入り一覧
-- 8種類の配色プリセットと各部の色調整
-- TOP広告の最大3行表示、広告画像・QRコード・公式リンク
-- 複数ボードでのデータ・画像の共有
+0.12以前の管理対象ファイルをバックアップし、本体をGUIDを維持してPackagesへ移します。既存の設置用VariantとそのGUID・設定は上書きしません。独自ファイルは削除しません。配布本体へ直接加えた変更は更新対象となり、変更前をプロジェクト直下のMetaReaWorldGuideBackupsへ退避します。独自素材はUserContentへ置いてください。
 
-## 0.9.0以降の配置
+配置中に失敗した場合はファイルを復元します。中断した移行は次の起動で復元してから再試行します。修復メニューは「MetaRea → パッケージ配置を再試行」です。
 
-プレハブ、スクリプト、画像、マテリアルなどの本体はすべて **Assets/MetaRea_World_GUIDE** に置かれます。
-直下には導入用プレハブとREADME、配下にはEditor、Scripts、Internal、UI、Fontsなどのフォルダがあります。
-Sceneは配布しません。Packagesに残るのはVCCの配置・更新処理と圧縮された配布データだけです。
+SDK依存条件はcom.vrchat.worlds >=3.10.5です。上限は設けませんが、将来SDKでの動作保証とは別です。
 
-既存の導入用プレハブとGUIDは保持します。更新対象の変更前ファイルは必要に応じて
-プロジェクト直下のMetaReaWorldGuideBackupsに退避します。
+## 広告・画像表示
 
-## 配布の作成
+新しいサーバーパッチ045のguide-v4配信に対応します。旧guide-v3配信は維持されます。新配信が利用できない初期接続では旧配信へフォールバックします。同一インスタンス内では配信形式を混在させません。
 
-本体の編集元はAssets/MetaRea_World_GUIDEです。
-package.jsonとMetaReaOnlineSetup.GuideVersionを同じバージョンにし、
-Unityでコンパイル・プレハブの確認後に公開します。
-CIはci/build_vcc_payload.pyでGUID・Scene混入・バージョンを検査し、
-本体をVCCパッケージ内のPayload~へ圧縮します。配布物はVCC用ZIPのみです。
+初期シート2048×1920にカード6枠（512×288）、バナー3枠、日替わり3枠、各一覧8枠ずつ、初期広告の詳細プレビュー9枠を予約します。画像と掲載確認が揃ってからTOPを一括表示します。詳細を開くと軽量画像を即表示し、高画質版→QRの順で取得します。待機・取得・再試行の状態を小さく表示します。
+
+サーバーパッチの適用前には新シート仕様を利用できません。アーカイブ側のパッチは別途適用が必要です。
+
+## 配布物の作成（開発者向け）
+
+編集元の本体はPackages/net.metarea.worldguide/Coreです。ci/build_vcc_payload.py --output <新しい出力フォルダ> で検査済みVCC用ZIPを生成します。Unityが旧Assetsと新Packagesの同一GUIDを同時インポートしないよう、配布ZIPは独立した更新処理と非インポートのPayload~を持ちます。更新処理が旧管理ファイルを退避してから、本体をPackages内のCoreへ展開します。利用時の本体配置はPackagesです。
+
+検査対象はGUID重複、意図しない外部参照、Scene・SDKファイルの混入、バージョン整合性です。新規導入・既存設定保持・復元・Udonコンパイルも別途確認します。
+
+VCC配布一覧: https://metarea-system.github.io/metarea-world-guide/index.json
+0.13.0ではBOOTHショップURLボタンと、8種類のプリセットに連動するアイコン配色も利用できます。

@@ -1,12 +1,7 @@
-# MetaRea World GUIDE — VCC installer
+# MetaRea World GUIDE
 
-配布・更新はVCCから行います。Unityを開くと本体を Assets/MetaRea_World_GUIDE に配置します。
-プレハブ、スクリプト、画像、マテリアルなどの本体はすべてAssets側にあります。
-このパッケージに残るのは、配置・更新用Editorと圧縮ペイロードです。
+本体はPackages/net.metarea.worldguide/Core、設置用Prefab VariantとUserContentはAssets/MetaRea_World_GUIDEへ配置します。
+独立した更新処理がPayload~を検証し、旧本体をバックアップしてからPackagesへ展開します。
+同じGUIDの旧本体と新本体が同時にインポートされることを防ぎます。
 
-利用者向け説明書: Assets/MetaRea_World_GUIDE/README.txt
-設置するプレハブ: Assets/MetaRea_World_GUIDE/MetaRea World GUIDE.prefab
-
-既存の導入用プレハブは上書きしません。更新前のファイルは必要に応じて
-プロジェクト直下の MetaReaWorldGuideBackups に退避します。
-Sceneは配布しません。
+SDKはcom.vrchat.worlds >=3.10.5。0.13.0はguide-v4配信とBOOTHリンク・プリセット配色に対応しています。
