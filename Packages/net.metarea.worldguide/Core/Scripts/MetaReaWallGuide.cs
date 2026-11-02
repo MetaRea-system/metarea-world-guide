@@ -411,20 +411,6 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 (c == '.' && (i+1 == text.Length || text[i+1] == ' ' || text[i+1] == '\n' || text[i+1] == '\r')))
             { end = i+1; break; }
         }
-        // Two lines at the fixed card width; keep readable text rather than
-        // shrinking a long first sentence. ASCII uses roughly half a CJK cell.
-        int units = 0, length = 0;
-        for (int i = 0; i < end; i++)
-        {
-            int next = text[i] <= 127 ? 1 : 2;
-            if (units+next > 74) break;
-            units += next; length = i+1;
-        }
-        if (length < end)
-        {
-            if (length > 0 && text[length-1] >= '\uD800' && text[length-1] <= '\uDBFF') length--;
-            return text.Substring(0,length).TrimEnd()+"…";
-        }
         return text.Substring(0,end).Trim();
     }
 
@@ -459,15 +445,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             int w = manyWorlds[k]; bool valid = TopWorldAvailable(w);
             bool compact = ready && sponsoredCount > 0;
             float height = compact ? 255f : 387f;
-            float photoHeight = compact ? 88f : 180f;
+            float photoHeight = compact ? 138f : 180f;
             Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
-            Place(manyCaptions[k].rectTransform, 10, photoHeight + (compact ? 12 : 18), 352, compact ? 24 : 28);
+            Place(manyCaptions[k].rectTransform, 10, photoHeight + (compact ? 10 : 18), 352, compact ? 24 : 28);
             manyCaptions[k].fontSize = compact ? 16 : 18;
-            Place(manyTitles[k].rectTransform, 10, photoHeight + (compact ? 40 : 49), 352, compact ? 48 : 62);
-            manyTitles[k].resizeTextMinSize = compact ? 16 : 19;
+            Place(manyTitles[k].rectTransform, 10, photoHeight + (compact ? 34 : 49), 352, 30);
+            manyTitles[k].fontSize = 20;
+            manyTitles[k].resizeTextForBestFit = false;
+            manyTitles[k].resizeTextMinSize = 20;
             manyTitles[k].resizeTextMaxSize = compact ? 20 : 24;
-            Place(manyAuthors[k].rectTransform, 10, height - 29, 352, 26);
+            Place(manyAuthors[k].rectTransform, 10, height - (compact ? 27 : 29), 352, compact ? 24 : 26);
+            manyAuthors[k].alignment = compact ? TextAnchor.UpperRight : TextAnchor.MiddleRight;
             manyButtons[k].interactable = valid;
             manyCaptions[k].text = k == 0 ? "今日のランダムワールド①" : k == 1 ? "今日のランダムワールド②" : k == 2 ? "紹介最新ワールド" : "おすすめランダムワールド";
             bool waiting = !ready && !failed, loadFailed = !ready && failed;
@@ -481,12 +470,12 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 loadFailed = !string.IsNullOrEmpty(drawErrors[0]);
                 waiting = !loadFailed && (!drawHasResult[0] || (guideV3 && !v3DrawComplete[0] && v3ListCounts[0] > drawCounts[0]));
             }
-            manyTitles[k].text = valid ? titles[w] : guideV3 && onlineMode && v3Maintenance ? "メンテナンス中" : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載対象がありません";
+            manyTitles[k].text = valid ? FitSingleLine(manyTitles[k],titles[w],k) : guideV3 && onlineMode && v3Maintenance ? "メンテナンス中" : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載対象がありません";
             manyAuthors[k].text = valid && !string.IsNullOrEmpty(authors[w]) ? "by " + authors[w] : "";
             if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
             {
-                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 90 : 118),352,compact ? 48 : 50);
-                manySummaries[k].text = valid ? TopIntroduction(descriptions[w]) : "";
+                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 66 : 82),352,24);
+                manySummaries[k].text = valid ? FitSingleLine(manySummaries[k],TopIntroduction(descriptions[w]),4+k) : "";
             }
             SetPhoto(manyPictures[k], valid ? w : -1);
             if (!valid && ready && (waiting || loadFailed))
@@ -2823,6 +2812,77 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         SetPlaceholder(adPicture, cell < 0 || cell >= 16 ? 1 : extraSponsorFailed[1 + cell / detailCellsPerPage] ? 2 : 0);
     }
 
+    // Ten independent lines: four titles, four summaries, and two sponsor titles.
+    private Text[] fittedLabels = new Text[10];
+    private string[] fittedInputs = new string[10];
+    private string[] fittedOutputs = new string[10];
+    private UnityEngine.Object[] fittedFonts = new UnityEngine.Object[10];
+    private int[] fittedSizes = new int[10];
+    private int[] fittedStyles = new int[10];
+    private float[] fittedWidths = new float[10];
+
+    private string FitSingleLine(Text label, string value, int slot)
+    {
+        if (label == null) return "";
+        string text = string.IsNullOrEmpty(value) ? "" : value.Replace("\r", " ").Replace("\n", " ").Replace("\t", " ");
+        // Measurement and rendering use the same fixed-size, plain-text UI label.
+        label.resizeTextForBestFit = false;
+        label.supportRichText = false;
+        float width = Mathf.Max(0f, label.rectTransform.rect.width - 2f);
+        if (fittedLabels[slot] == label && fittedInputs[slot] == text &&
+            fittedFonts[slot] == label.font && fittedSizes[slot] == label.fontSize &&
+            fittedStyles[slot] == (int)label.fontStyle && fittedWidths[slot] == width)
+            return fittedOutputs[slot];
+
+        label.text = text;
+        string result = text;
+        if (text.Length > 0 && label.preferredWidth > width)
+        {
+            label.text = "…";
+            result = "";
+            if (label.preferredWidth <= width)
+            {
+                int low = 0, high = text.Length - 1, best = 0;
+                while (low <= high)
+                {
+                    int middle = low + (high - low) / 2;
+                    int end = SafeLineBoundary(text, middle);
+                    label.text = text.Substring(0, end) + "…";
+                    if (label.preferredWidth <= width) { best = end; low = middle + 1; }
+                    else high = middle - 1;
+                }
+                result = text.Substring(0, best) + "…";
+            }
+        }
+        // Intermediate candidates are replaced synchronously, before a rendered frame.
+        label.text = result;
+        fittedLabels[slot] = label;
+        fittedInputs[slot] = text;
+        fittedOutputs[slot] = result;
+        fittedFonts[slot] = label.font;
+        fittedSizes[slot] = label.fontSize;
+        fittedStyles[slot] = (int)label.fontStyle;
+        fittedWidths[slot] = width;
+        return result;
+    }
+
+    private int SafeLineBoundary(string text, int end)
+    {
+        // Keep surrogate pairs, combining marks, and joined emoji together.
+        while (end > 0 && end < text.Length)
+        {
+            char next = text[end];
+            System.Globalization.UnicodeCategory category = char.GetUnicodeCategory(text, end);
+            if ((next >= '\uDC00' && next <= '\uDFFF') || next == '\u200D' || text[end - 1] == '\u200D' ||
+                category == System.Globalization.UnicodeCategory.NonSpacingMark ||
+                category == System.Globalization.UnicodeCategory.SpacingCombiningMark ||
+                category == System.Globalization.UnicodeCategory.EnclosingMark)
+                end--;
+            else break;
+        }
+        return end;
+    }
+
     private void RenderSponsors()
     {
         if (sponsoredWorldButtons != null && sponsoredWorldButtons.Length == 2)
@@ -2836,12 +2896,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 if (world >= 0)
                 {
                     RawImage photo = sponsoredWorldPictures[s];
+                    Text cardTitle = sponsoredWorldTitles[s];
+                    Place(cardTitle.rectTransform,10,v4Layout ? 214 : 150,352,v4Layout ? 30 : 92);
+                    cardTitle.fontSize = v4Layout ? 20 : 24;
+                    cardTitle.resizeTextForBestFit = !v4Layout;
+                    cardTitle.horizontalOverflow = HorizontalWrapMode.Wrap;
+                    cardTitle.verticalOverflow = VerticalWrapMode.Truncate;
                     if (topPlacementProtocol)
                     {
                         sponsoredWorldButtons[s].interactable = IsTopActive(world);
-                        sponsoredWorldTitles[s].text = topAdTitles[world];
+                        sponsoredWorldTitles[s].text = v4Layout ? FitSingleLine(cardTitle,topAdTitles[world],8+s) : topAdTitles[world];
                         if (guideV3 && onlineMode && topAds[world] >= 0 && v3TopImages[topAds[world]] != null)
-                        { Place(photo.rectTransform,8,8,v4Layout ? 236.44f : 356,133); if (v4Layout) photo.rectTransform.anchoredPosition = new Vector2((372f-236.44f)*.5f,-8); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
+                        { Place(photo.rectTransform,8,8,356,v4Layout ? 200.25f : 133); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
                         else if (!guideV3 && topImageIndices[world] >= 0)
                         {
                             int cell = topImageIndices[world]; int slot = 5 + cell / 8;

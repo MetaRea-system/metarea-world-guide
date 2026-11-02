@@ -32,8 +32,10 @@ public static class MetaReaCompactLayout
                 var card = g.sponsoredWorldButtons[i].transform;
                 Place(card, i * 388, 18, 372, 252);
                 var title = g.sponsoredWorldTitles[i];
-                Place(title.transform, 10, 150, 352, 92);
-                title.resizeTextForBestFit = true;
+                Place(g.sponsoredWorldPictures[i].transform, 8, 8, 356, 200.25f);
+                Place(title.transform, 10, 214, 352, 30);
+                title.fontSize = 20;
+                title.resizeTextForBestFit = false;
                 title.resizeTextMinSize = 20;
                 title.resizeTextMaxSize = 24;
                 title.horizontalOverflow = HorizontalWrapMode.Wrap;
