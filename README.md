@@ -2,7 +2,7 @@
 
 VRChatワールドへ配置するワールド紹介ボードです。
 
-## 0.13.0の配置
+## 0.13.1の配置
 
 - **Packages/net.metarea.worldguide/Core**：動作スクリプト、内部プレハブ、画像、フォント、マテリアル、設定用Editor。
 - **Assets/MetaRea_World_GUIDE/MetaRea World GUIDE.prefab**：利用者が配置・設定するPrefab Variant。
@@ -35,3 +35,9 @@ SDK依存条件はcom.vrchat.worlds >=3.10.5です。上限は設けませんが
 
 VCC配布一覧: https://metarea-system.github.io/metarea-world-guide/index.json
 0.13.0ではBOOTHショップURLボタンと、8種類のプリセットに連動するアイコン配色も利用できます。
+
+## 0.13.1の変更
+
+オンライン用ボードは、ワールドビルド時にサンプル画像・サンプル広告・編集用プレビューへの参照を外します。編集画面のプレビュー、実行時の状態画像とロゴ、オフライン用サンプルは維持します。
+
+お気に入りはAssets/MetaRea_World_GUIDE/UserContent/Favoritesの保存データへ移行し、パッケージ更新で保持します。シーンを保存して関連付けを保持してください。ボードを再配置する場合は、設定画面の「保存データ」で既存の一覧を選びます。同じ保存データを選んだボードは一覧を共有し、複製ボタンで別の一覧にできます。保存データが見つからない場合は登録を空にしてアップロードせず、ビルドを停止します。

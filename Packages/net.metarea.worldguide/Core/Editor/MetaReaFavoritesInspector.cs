@@ -17,7 +17,7 @@ public static class MetaReaFavoritesInspector
     {
         EditorGUILayout.Space();
         EditorGUILayout.LabelField("お気に入りワールド", EditorStyles.boldLabel);
-        EditorGUILayout.HelpBox("このPrefabの登録一覧を、ワールドの全利用者に表示します。1ページ8件。行を押すと詳細ページを開かず共有ポータルを出します。", MessageType.Info);
+        EditorGUILayout.HelpBox("この保存データの登録一覧を、ワールドの全利用者に表示します。1ページ8件。行を押すと詳細ページを開かず共有ポータルを出します。", MessageType.Info);
         EditorGUI.BeginDisabledGroup(EditorApplication.isPlaying);
         var ids = serialized.FindProperty("favoriteWorldIds");
         var titles = serialized.FindProperty("favoriteWorldTitles");
