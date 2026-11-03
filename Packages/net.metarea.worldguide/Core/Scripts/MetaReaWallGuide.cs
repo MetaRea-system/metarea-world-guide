@@ -445,7 +445,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             int w = manyWorlds[k]; bool valid = TopWorldAvailable(w);
             bool compact = ready && sponsoredCount > 0;
             float height = compact ? 255f : 387f;
-            float photoHeight = compact ? 138f : 180f;
+            float photoHeight = compact ? 138f : 230f;
             Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
             Place(manyCaptions[k].rectTransform, 10, photoHeight + (compact ? 10 : 18), 352, compact ? 24 : 28);
