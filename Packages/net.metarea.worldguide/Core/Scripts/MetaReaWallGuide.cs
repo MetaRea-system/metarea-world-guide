@@ -450,7 +450,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
             Place(manyCaptions[k].rectTransform, 10, photoHeight + (compact ? 10 : 18), 352, compact ? 24 : 28);
             manyCaptions[k].fontSize = compact ? 16 : 18;
-            Place(manyTitles[k].rectTransform, 10, photoHeight + (compact ? 34 : 49), 352, 30);
+            Place(manyTitles[k].rectTransform, 10, photoHeight + (compact ? 34 : 56), 352, 30);
             manyTitles[k].fontSize = 20;
             manyTitles[k].resizeTextForBestFit = false;
             manyTitles[k].resizeTextMinSize = 20;
@@ -474,7 +474,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             manyAuthors[k].text = valid && !string.IsNullOrEmpty(authors[w]) ? "by " + authors[w] : "";
             if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
             {
-                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 66 : 82),352,24);
+                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 66 : 96),352,24);
                 manySummaries[k].text = valid ? FitSingleLine(manySummaries[k],TopIntroduction(descriptions[w]),4+k) : "";
             }
             SetPhoto(manyPictures[k], valid ? w : -1);

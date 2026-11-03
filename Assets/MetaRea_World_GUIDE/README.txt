@@ -1,4 +1,4 @@
-MetaRea World GUIDE 0.13.2
+MetaRea World GUIDE 0.13.3
 
 配置：Assets/MetaRea_World_GUIDE/MetaRea World GUIDE.prefab をHierarchyへドラッグしてください。
 位置・お気に入り・配色は設置したオブジェクトの設定から変更します。
