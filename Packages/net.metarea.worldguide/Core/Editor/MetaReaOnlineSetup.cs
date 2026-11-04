@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using UdonSharpEditor;
@@ -29,7 +30,7 @@ public static class MetaReaOnlineSetup
         return cachedClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.13.4";
+    public const string GuideVersion = "0.14.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -50,17 +51,30 @@ public static class MetaReaOnlineSetup
         return true;
     }
 
-    public static VRCUrl[] StatisticsUrls(string feed)
+    public static string StatisticsSite(string site)
+    {
+        if (string.IsNullOrWhiteSpace(site)) return "unknown";
+        if (site.Length > 64 || site.Any(c => !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-')))
+            throw new ArgumentException("MetaRea: 統計の設置先コードは英数字・_・-の1～64文字で指定してください。");
+        return site;
+    }
+    public static string StatisticsEnvironment(string environment)
+    {
+        if (string.IsNullOrEmpty(environment)) return "unknown";
+        if (environment != "production" && environment != "test" && environment != "unknown")
+            throw new ArgumentException("MetaRea: 統計の環境はproduction / test / unknownで指定してください。");
+        return environment;
+    }
+    public static VRCUrl[] StatisticsUrls(string feed, string site = "unknown", string environment = "production")
     {
         if (feed != FeedEndpoint && !IsVersionedOfficialFeed(feed)) return new VRCUrl[0];
-        string versioned = VersionedFeedUrl(FeedEndpoint);
-        int query = versioned.IndexOf('?');
-        if (query < 0) return new VRCUrl[0];
-        string version = versioned.Substring(query + 1).Split('&')[0];
-        string[] events = { "feed_success", "feed_failure", "status_success", "status_failure", "board_open", "ad_detail", "portal_request" };
-        var urls = new VRCUrl[events.Length];
+        site = StatisticsSite(site); environment = StatisticsEnvironment(environment);
+        string[] events = { "board_ready", "portal_request_accepted", "portal_owner_accepted" };
+        string[] protocols = { "v2", "v3", "v4", "unknown" };
+        var urls = new VRCUrl[12];
         for (int i = 0; i < events.Length; i++)
-            urls[i] = new VRCUrl("https://metarea.net/api/udon/telemetry?schema=1&event=" + events[i] + "&" + version);
+            for (int p = 0; p < protocols.Length; p++)
+                urls[i * 4 + p] = new VRCUrl("https://metarea.net/api/udon/telemetry?schema=2&version=" + GuideVersion + "&event=" + events[i] + "&site=" + site + "&environment=" + environment + "&protocol=" + protocols[p]);
         return urls;
     }
     public const string SponsorStatusUrl = "https://metarea.net/api/udon/guide-v3/status.json";
@@ -98,7 +112,7 @@ public static class MetaReaOnlineSetup
             throw new ArgumentException("HTTPS feed and atlas template with {0} are required.");
         Undo.RecordObject(guide, "Configure MetaRea online feed");
         guide.feedUrl = new VRCUrl(VersionedFeedUrl(feed));
-        guide.statisticsUrls = StatisticsUrls(feed);
+        guide.statisticsUrls = StatisticsUrls(feed, guide.statisticsSite, guide.statisticsEnvironment);
         guide.sponsorStatusUrl = new VRCUrl(SponsorStatusUrl);
         ConfigureV3Urls(guide);
         guide.sampleAdBanner = AssetDatabase.LoadAssetAtPath<Texture2D>(MetaReaPrototypeBuilder.Root + "/Samples/SponsorAds/Navy/banner-1536x256.png");

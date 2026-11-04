@@ -38,7 +38,8 @@ public sealed class MetaReaBuildAssets : IProcessSceneWithReport
             MetaReaFavoritesStorage.ApplySaved(settings);
         foreach (var guide in scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<MetaReaWallGuide>(true)))
         {
-            if (!guide.onlineMode) continue; // Offline boards really use their samples.
+            guide.statisticsRuntimeEnabled = guide.onlineMode;
+            if (!guide.onlineMode) { UdonSharpEditorUtility.CopyProxyToUdon(guide); continue; } // Offline boards keep their samples.
             guide.samplePictures = new Texture[0];
             guide.sampleAdBanner = null;
             guide.sampleAdDetail = null;

@@ -52,6 +52,8 @@ public static class MetaReaSharedDataSetup
         try
         {
             var all = scene.GetRootGameObjects().SelectMany(r => r.GetComponentsInChildren<MetaReaWallGuide>(true)).ToArray();
+            foreach (var guide in all)
+                if (guide.statisticsRuntimeEnabled) { guide.statisticsRuntimeEnabled = false; UdonSharpEditorUtility.CopyProxyToUdon(guide); EditorUtility.SetDirty(guide); }
             var displays = all.Where(g => !g.isSharedDataSource).OrderBy(g => HierarchyKey(g.transform), StringComparer.Ordinal).ToArray();
             var sources = all.Where(g => g.isSharedDataSource).ToArray();
             if (displays.Length == 0) return sources.FirstOrDefault();
@@ -60,6 +62,11 @@ public static class MetaReaSharedDataSetup
             foreach (var display in displays)
                 if (display.onlineMode != first.onlineMode || MetaReaOnlineSetup.VersionedFeedUrl(display.feedUrl.Get()) != MetaReaOnlineSetup.VersionedFeedUrl(first.feedUrl.Get()) || display.recommendedDrawUrl.Get() != first.recommendedDrawUrl.Get() || display.randomDrawUrl.Get() != first.randomDrawUrl.Get())
                     throw new BuildFailedException("MetaRea: 同じシーンのボードには同じ配信設定を使用してください。");
+            string site = MetaReaOnlineSetup.StatisticsSite(first.statisticsSite);
+            string environment = MetaReaOnlineSetup.StatisticsEnvironment(first.statisticsEnvironment);
+            foreach (var display in displays)
+                if (MetaReaOnlineSetup.StatisticsSite(display.statisticsSite) != site || MetaReaOnlineSetup.StatisticsEnvironment(display.statisticsEnvironment) != environment)
+                    throw new BuildFailedException("MetaRea: 同じシーンのボードには同じ統計の設置先コード・環境を指定してください。");
             var source = sources.FirstOrDefault();
             bool changed = source == null;
             if (source == null)
@@ -77,7 +84,8 @@ public static class MetaReaSharedDataSetup
             source.onlineMode = first.onlineMode;
             source.feedUrl = new VRC.SDKBase.VRCUrl(MetaReaOnlineSetup.VersionedFeedUrl(first.feedUrl.Get()));
             source.anonymousStatistics = displays.All(g => g.anonymousStatistics);
-            source.statisticsUrls = MetaReaOnlineSetup.StatisticsUrls(first.feedUrl.Get());
+            source.statisticsSite = site; source.statisticsEnvironment = environment;
+            source.statisticsUrls = MetaReaOnlineSetup.StatisticsUrls(first.feedUrl.Get(), site, environment);
             source.detailTrackingUrls = source.anonymousStatistics ? MetaReaOnlineSetup.DetailTrackingUrls(first.feedUrl.Get()) : new VRC.SDKBase.VRCUrl[0];
             source.clickUrls = source.anonymousStatistics ? MetaReaOnlineSetup.ClickUrls(first.feedUrl.Get()) : new VRC.SDKBase.VRCUrl[0];
             source.sponsorStatusUrl = first.sponsorStatusUrl;

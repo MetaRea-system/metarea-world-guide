@@ -82,7 +82,12 @@ public class MetaReaWallGuideInspector : Editor
         if (currentGuide.unifiedDisplay || !currentGuide.manyVersion) second.boolValue=EditorGUILayout.Popup("標準表示の2枠目",second.boolValue?1:0,new[]{"今日のランダムワールド②","ランダムチルワールド"})==1;
         EditorGUILayout.PropertyField(Property("portalAnchor"),new GUIContent("ポータル出現位置"));
         EditorGUILayout.PropertyField(Property("anonymousStatistics"), new GUIContent("匿名の操作統計を送る"));
-        EditorGUILayout.HelpBox("読込結果・表示・操作の概数を送信します。個人IDやワールドIDは含めません。同じシーンの1台でも無効にすると操作統計は停止します。通常のFeed読出はサーバー側で集計されます。", MessageType.None);
+        EditorGUILayout.PropertyField(Property("statisticsSite"), new GUIContent("統計の設置先コード"));
+        var environment = Property("statisticsEnvironment");
+        string[] environments = { "production", "test", "unknown" };
+        int environmentIndex = System.Array.IndexOf(environments, environment.stringValue);
+        environment.stringValue = environments[EditorGUILayout.Popup("統計の環境", environmentIndex < 0 ? 2 : environmentIndex, new[] { "本番", "テスト", "未分類" })];
+        EditorGUILayout.HelpBox("表示準備完了・ポータル操作受付を送信します。閲覧人数や移動成功数ではありません。個人ID・セッションID・ワールドIDは含めません。設置先コードは英数字・_・-の64文字以内、未設定はunknownです。同じシーンの全ボードで設定を揃えてください。1台でも統計を無効にすると全体の送信を停止します。Editor・ClientSimでは送信しません。短い滞在・通信不調・待ち行列の上限では未送信が生じます。", MessageType.None);
         var anchor=Property("portalAnchor").objectReferenceValue as Transform;
         if(anchor!=null && GUILayout.Button("ポータル位置を選択して移動"))
         {Selection.activeGameObject=anchor.gameObject;if(SceneView.lastActiveSceneView!=null)SceneView.lastActiveSceneView.FrameSelected();}

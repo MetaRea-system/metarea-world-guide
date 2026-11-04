@@ -81,7 +81,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public Texture sampleAdDetail;
     public string[] pictureWorldIds;
 
-    
+
     public Color headingColor = new Color(.88f,.94f,1f);
     public Color bodyColor = new Color(.72f,.82f,.89f);
     public Color secondaryColor = new Color(.64f,.77f,.86f);
@@ -192,11 +192,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public int feedRequestCount;
     public bool anonymousStatistics = true;
     [HideInInspector] public VRCUrl[] statisticsUrls;
-    private bool[] statisticsPending = new bool[7];
-    private bool[] statisticsSeen = new bool[7];
-    private float[] statisticsQueuedAt = new float[7];
+    [HideInInspector] public bool statisticsRuntimeEnabled;
+    public string statisticsSite = "unknown";
+    public string statisticsEnvironment = "production";
+    private int[] statisticsQueue = new int[64];
+    private float[] statisticsQueueTimes = new float[64];
+    private int statisticsHead, statisticsCount;
+    private bool statisticsBoardSeen;
     private float nextStatisticsSend = 60f;
     private int statisticsSent;
+    [HideInInspector] public int statisticsDropped;
 
     [HideInInspector] public VRCUrl[] clickUrls;
     private int[] adClickSlots, topClickSlots;
@@ -282,7 +287,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void PumpAdClicks()
     {
-        if (Networking.LocalPlayer == null) return;
+        if (!StatisticsRuntimeAllowed()) return;
         int index = TakeAdClick(); if (index < 0) return;
         clickRequestUrl = clickUrls[index].Get(); clickRequestStarted = Time.realtimeSinceStartup;
         if (guideV3) v3NextStringAt = Time.realtimeSinceStartup+5.1f;
@@ -296,21 +301,28 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         return true;
     }
 
-    // Fixed editor-baked URLs only. Events are coalesced and never retried.
-    // 0/1: first feed result, 2/3: first status result, 4: first active board,
-    // 5: ad detail, 6: accepted local portal request (not a confirmed visit).
+    // schema 2: local readiness, accepted local request, accepted owner request.
+    // Bounded best-effort queue: no event merging, no retry after dispatch.
     private void QueueStatistics(int kind)
     {
-        if (!onlineMode || !anonymousStatistics || kind < 0 || kind >= 7) return;
+        if (!onlineMode || !anonymousStatistics || kind < 0 || kind >= 3) return;
         if (sharedDataSource != null && sharedDataSource != this) { sharedDataSource.QueueStatistics(kind); return; }
-        if (statisticsUrls == null || statisticsUrls.Length != 7 || statisticsSent >= 12) return;
-        if (kind < 2 && (statisticsSeen[0] || statisticsSeen[1])) return;
-        if (kind >= 2 && kind < 4 && (statisticsSeen[2] || statisticsSeen[3])) return;
-        if (kind == 4 && statisticsSeen[4]) return;
-        if (statisticsPending[kind] || (statisticsSeen[kind] && Time.realtimeSinceStartup - statisticsQueuedAt[kind] < 60f)) return;
-        statisticsSeen[kind] = true; statisticsPending[kind] = true; statisticsQueuedAt[kind] = Time.realtimeSinceStartup;
+        if (kind == 0 && statisticsBoardSeen) return;
+        if (statisticsUrls == null || statisticsUrls.Length != 12) return;
+        if (statisticsSent >= 128 || statisticsCount >= 64) { statisticsDropped++; return; }
+        int protocol = !guideV3 ? 0 : !v3Initialized ? 3 : v4Protocol ? 2 : 1;
+        int tail = (statisticsHead + statisticsCount) % 64;
+        statisticsQueue[tail] = kind * 4 + protocol;
+        statisticsQueueTimes[tail] = Time.realtimeSinceStartup;
+        statisticsCount++;
+        if (kind == 0) statisticsBoardSeen = true;
     }
 
+    private void QueueBoardReady()
+    {
+        if (!isSharedDataSource && ready && (!v4Layout || v4TopReady) && gameObject.activeInHierarchy && topPanel != null && topPanel.transform.parent != null && topPanel.transform.parent.gameObject.activeInHierarchy)
+            QueueStatistics(0);
+    }
     private bool IsStatisticsUrl(string url)
     {
         if (statisticsUrls == null) return false;
@@ -321,29 +333,38 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private int TakeStatisticsEvent()
     {
+        if (!onlineMode || !anonymousStatistics) { statisticsCount = 0; return -1; }
         if (guideV3 && !V3TelemetryAllowed()) return -1;
-        if (!onlineMode || !anonymousStatistics || sharedDataSource != null || statisticsSent >= 12 || Time.realtimeSinceStartup < nextStatisticsSend) return -1;
+        if (sharedDataSource != null || statisticsSent >= 128 || Time.realtimeSinceStartup < nextStatisticsSend) return -1;
         if (loading || sponsorStatusLoading || pendingDrawTab >= 0 || imageRequestInFlight || !string.IsNullOrEmpty(clickRequestUrl)) return -1;
         if (Time.realtimeSinceStartup - lastFeedAttempt < 6f || Time.realtimeSinceStartup - sponsorStatusStarted < 6f) return -1;
-        for (int i = 0; i < 7; i++) if (statisticsPending[i])
+        while (statisticsCount > 0)
         {
-            statisticsPending[i] = false; statisticsSent++; nextStatisticsSend = Time.realtimeSinceStartup + 60f; nextClickSend = Time.realtimeSinceStartup + 5.1f;
-            return i;
+            int at = statisticsHead; statisticsHead = (statisticsHead + 1) % 64; statisticsCount--;
+            int index = statisticsQueue[at];
+            if (Time.realtimeSinceStartup - statisticsQueueTimes[at] > 300f || statisticsUrls == null || statisticsUrls.Length != 12 ||
+                statisticsUrls[index] == null || string.IsNullOrEmpty(statisticsUrls[index].Get())) { statisticsDropped++; continue; }
+            statisticsSent++; nextStatisticsSend = Time.realtimeSinceStartup + 10f; nextClickSend = Time.realtimeSinceStartup + 5.1f;
+            return index;
         }
         return -1;
     }
 
+    private bool StatisticsRuntimeAllowed()
+    { return statisticsRuntimeEnabled && Networking.LocalPlayer != null; }
+
     private void PumpStatistics()
     {
-        // Editor validation must not generate production statistics.
-        if (Networking.LocalPlayer == null || statisticsUrls == null || statisticsUrls.Length != 7) return;
-        int kind = TakeStatisticsEvent();
-        if (kind >= 0 && statisticsUrls[kind] != null && !string.IsNullOrEmpty(statisticsUrls[kind].Get()))
+        // Enabled only on a build copy. Editor/ClientSim scenes keep this false.
+        if (!StatisticsRuntimeAllowed()) return;
+        int index = TakeStatisticsEvent();
+        if (index >= 0)
         {
-            if (guideV3) v3NextStringAt = Time.realtimeSinceStartup+5.1f;
-            VRCStringDownloader.LoadUrl(statisticsUrls[kind], (IUdonEventReceiver)this);
+            if (guideV3) v3NextStringAt = Time.realtimeSinceStartup + 5.1f;
+            VRCStringDownloader.LoadUrl(statisticsUrls[index], (IUdonEventReceiver)this);
         }
     }
+
     [HideInInspector] public int drawRequestCount;
     [HideInInspector] public int statusRequestCount;
     [HideInInspector] public int imageRequestCount;
@@ -945,7 +966,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sponsorStatusUrl != null && result.Url.Get() == sponsorStatusUrl.Get())
         {
             bool accepted = ApplySponsorStatus(result.Result);
-            QueueStatistics(accepted ? 2 : 3);
+
             if (!accepted) FailSponsorStatus();
             Render(); return;
         }
@@ -953,14 +974,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!Networking.IsOwner(gameObject) || !string.IsNullOrEmpty(pinnedSnapshot)) return;
         if (Parse(result.Result))
         {
-            QueueStatistics(0);
+
             // Pin the actual small metadata snapshot, not a mutable URL. This
             // also gives late joiners the same metadata without a new request.
             pinnedSnapshot = result.Result;
             appliedSnapshot = pinnedSnapshot;
             RequestSerialization();
         }
-        else { failed = true; QueueStatistics(1); }
+        else { failed = true; }
         Render();
     }
 
@@ -977,8 +998,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         if (sponsorStatusUrl != null && result.Url.Get() == sponsorStatusUrl.Get())
-        { QueueStatistics(3); FailSponsorStatus(); Render(); return; }
-        loading = false; if (!string.IsNullOrEmpty(pinnedSnapshot)) return; failed = true; QueueStatistics(1); Render();
+        { FailSponsorStatus(); Render(); return; }
+        loading = false; if (!string.IsNullOrEmpty(pinnedSnapshot)) return; failed = true; Render();
     }
 
     public void _Retry()
@@ -2327,7 +2348,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (!ready || !CanUseWorld(i) || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
         localPortalRequestTime = Time.realtimeSinceStartup;
-        QueueStatistics(6);
+        QueueStatistics(1);
         if (onlineMode && i >= 64)
         {
             if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _DrawPortalOnOwner(portalIds[i], titles[i]);
@@ -2349,6 +2370,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         portalExpiresAt = TimeNow() + 20d;
         nextPortalTime = TimeNow() + Mathf.Max(1f, portalCooldownSeconds);
         portalCooldownStarted = true;
+        QueueStatistics(2);
         RequestSerialization();
         ApplyPortal();
     }
@@ -2364,6 +2386,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         sharedPortalWorldId = worldId;
         portalExpiresAt = TimeNow() + 20d; nextPortalTime = TimeNow() + Mathf.Max(1f, portalCooldownSeconds);
         portalCooldownStarted = true;
+        QueueStatistics(2);
         RequestSerialization(); ApplyPortal();
     }
 
@@ -2436,6 +2459,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int entry = favoriteOrder[position];
         if (entry < 0 || favoriteWorldIds == null || entry >= favoriteWorldIds.Length) return;
         localPortalRequestTime = Time.realtimeSinceStartup;
+        QueueStatistics(1);
         if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _FavoritePortalOnOwner(entry);
         else SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(_FavoritePortalOnOwner), entry);
         RenderFavorites();
@@ -2454,6 +2478,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         sharedPortalWorldId = worldId;
         portalExpiresAt = TimeNow() + 20d; nextPortalTime = TimeNow() + Mathf.Max(1f, portalCooldownSeconds);
         portalCooldownStarted = true;
+        QueueStatistics(2);
         RequestSerialization(); ApplyPortal(); RenderFavorites();
     }
 
@@ -2510,7 +2535,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (guideV3 && onlineMode) { V3Tick(); return; }
         if (sharedDataSource == null)
         {
-            if (loading && Time.realtimeSinceStartup - lastFeedAttempt > 60f) { loading = false; failed = true; QueueStatistics(1); Render(); }
+            if (loading && Time.realtimeSinceStartup - lastFeedAttempt > 60f) { loading = false; failed = true; Render(); }
             if (pendingDrawTab >= 0 && !drawReadyToCommit && Time.realtimeSinceStartup - drawStartedAt > 90f)
                 FailDraw("抽選の読み込みがタイムアウトしました。再試行できます");
         }
@@ -2544,7 +2569,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sharedDataSource == null && ready && onlineMode && sponsorStatusProtocol && (adCount > 0 || placementCount > 0 || topCount > 0))
         {
             bool failedNow = (sponsorStatusLoading && Time.realtimeSinceStartup - sponsorStatusStarted >= 15f) || (sponsorStatusValid && !StatusUsable());
-            if (failedNow) { QueueStatistics(3); FailSponsorStatus(); }
+            if (failedNow) { FailSponsorStatus(); }
             if (Time.realtimeSinceStartup >= nextSponsorStatusAttempt) BeginSponsorStatusDownload();
             if (RefreshSponsorAvailability() || failedNow) Render();
         }
@@ -2552,7 +2577,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         PumpAdClicks(); PumpStatistics();
         if (isSharedDataSource) return;
         UpdateLoadingIndicators();
-        if (ready && gameObject.activeInHierarchy && topPanel != null && topPanel.transform.parent.gameObject.activeInHierarchy) QueueStatistics(4);
+        QueueBoardReady();
         UpdateDrawUi();
         RenderFavorites();
         int wait = Mathf.CeilToInt(PortalWait());
@@ -4275,7 +4300,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             V3Pull();
             UpdateLoadingIndicators(); UpdateDrawUi(); RenderFavorites(); V4UpdateUi();
-            if (ready && gameObject.activeInHierarchy && topPanel != null && topPanel.transform.parent.gameObject.activeInHierarchy) QueueStatistics(4);
+            QueueBoardReady();
             if (portalButton != null)
             {
                 int wait = Mathf.CeilToInt(PortalWait());
@@ -4308,7 +4333,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         V3ScheduleMetadata();
         if (!v3Maintenance && Time.realtimeSinceStartup >= v3ServerWaitUntil) { PumpAdClicks(); PumpStatistics(); }
-        if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); V4UpdateUi(); }
+        if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); V4UpdateUi(); QueueBoardReady(); }
     }
 
     private void V3Pull()
