@@ -70,6 +70,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int favoritePage;
     private int[] favoriteOrder;
     private int favoriteCount;
+    [HideInInspector] public string[] favoriteFolderNames = new string[0];
+    [HideInInspector] public int[] favoriteFolderIndices = new int[0];
+    [HideInInspector] public Button[] favoriteFolderButtons;
+    [HideInInspector] public Text[] favoriteFolderTitles;
+    [HideInInspector] public Text[] favoriteFolderCounts;
+    [HideInInspector] public Button favoriteBack;
+    [HideInInspector] public Text favoriteSection;
+    private int favoriteFolder = -1;
+    private int favoriteFolderPage;
+    private int[] favoriteFolderCountsCache;
 
     public Texture[] samplePictures;
     [HideInInspector] public Texture loadingPicture;
@@ -395,6 +405,27 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool[] recommended;
     private bool[] pc;
     private bool[] android;
+    private int[] pcSupport, androidSupport, iosSupport;
+    public Text[] topPlatforms, manyPlatforms, rowPlatforms, rowAuthors;
+    public Text detailPlatforms;
+    private int PlatformState(DataDictionary world, string key)
+    {
+        DataToken value;
+        var support = V3Object(world, "platformSupport");
+        if (support == null || !support.TryGetValue(key, TokenType.Boolean, out value)) return 0;
+        return value.Boolean ? 1 : -1;
+    }
+    private void ReadPlatforms(DataDictionary world, int index)
+    {
+        pcSupport[index] = PlatformState(world, "pc"); androidSupport[index] = PlatformState(world, "android"); iosSupport[index] = PlatformState(world, "ios");
+    }
+    private string PlatformMark(int state) { return state > 0 ? "✓" : state < 0 ? "—" : "?"; }
+    private string PlatformWord(int state) { return state > 0 ? "対応" : state < 0 ? "非対応" : "未確認"; }
+    private string Platforms(int index)
+    {
+        if (pcSupport == null || index < 0 || index >= pcSupport.Length) return "PC ?  Android ?  iOS ?";
+        return "PC " + PlatformMark(pcSupport[index]) + "  Android " + PlatformMark(androidSupport[index]) + "  iOS " + PlatformMark(iosSupport[index]);
+    }
     private int[] pictureIndices;
     private int[] order;
     private int count;
@@ -476,7 +507,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             manyTitles[k].resizeTextForBestFit = false;
             manyTitles[k].resizeTextMinSize = 20;
             manyTitles[k].resizeTextMaxSize = compact ? 20 : 24;
-            Place(manyAuthors[k].rectTransform, 10, height - (compact ? 27 : 29), 352, compact ? 24 : 26);
+            Place(manyAuthors[k].rectTransform, 226, height - (compact ? 27 : 29), 136, compact ? 24 : 26);
+            if (manyPlatforms != null && k < manyPlatforms.Length && manyPlatforms[k] != null) { Place(manyPlatforms[k].rectTransform, 10, height - (compact ? 27 : 29), 212, compact ? 24 : 26); manyPlatforms[k].text = valid ? Platforms(w) : ""; }
             manyAuthors[k].alignment = compact ? TextAnchor.UpperRight : TextAnchor.MiddleRight;
             manyButtons[k].interactable = valid;
             manyCaptions[k].text = k == 0 ? "今日のランダムワールド①" : k == 1 ? "今日のランダムワールド②" : k == 2 ? "紹介最新ワールド" : "おすすめランダムワールド";
@@ -492,7 +524,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 waiting = !loadFailed && (!drawHasResult[0] || (guideV3 && !v3DrawComplete[0] && v3ListCounts[0] > drawCounts[0]));
             }
             manyTitles[k].text = valid ? FitSingleLine(manyTitles[k],titles[w],k) : guideV3 && onlineMode && v3Maintenance ? "メンテナンス中" : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載対象がありません";
-            manyAuthors[k].text = valid && !string.IsNullOrEmpty(authors[w]) ? "by " + authors[w] : "";
+            manyAuthors[k].text = valid ? FitSingleLine(manyAuthors[k], string.IsNullOrEmpty(authors[w]) ? "" : "by " + authors[w], 10+k) : "";
             if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
             {
                 Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 66 : 96),352,24);
@@ -902,6 +934,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             favoriteWorldIds = favoritesSettings.favoriteWorldIds;
             favoriteWorldTitles = favoritesSettings.favoriteWorldTitles;
             favoriteWorldAuthors = favoritesSettings.favoriteWorldAuthors;
+            favoriteFolderNames = favoritesSettings.favoriteFolderNames;
+            favoriteFolderIndices = favoritesSettings.favoriteFolderIndices;
         }
         BuildFavorites();
         InitializeDisplayMode();
@@ -1105,6 +1139,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         baseWorldCount = n; count = guideV3 && onlineMode ? 256 : 192;
         ids = new string[count]; titles = new string[count]; authors = new string[count]; descriptions = new string[count];
+        pcSupport = new int[count]; androidSupport = new int[count]; iosSupport = new int[count];
         recommended = new bool[count]; pc = new bool[count]; android = new bool[count]; pictureIndices = new int[count];
         portalIds = new string[count]; sponsorOnly = new bool[count];
         for (int i = 0; i < count; i++) pictureIndices[i] = -1;
@@ -1113,7 +1148,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             DataDictionary w = list[i].DataDictionary;
             ids[i] = Str(w, "id"); titles[i] = Str(w, "name"); descriptions[i] = Str(w, "description");
             authors[i] = Str(w, "authorName");
-            recommended[i] = Flag(w, "recommended"); pc[i] = Flag(w, "pc"); android[i] = Flag(w, "android");
+            ReadPlatforms(w, i); recommended[i] = Flag(w, "recommended"); pc[i] = Flag(w, "pc"); android[i] = Flag(w, "android");
             pictureIndices[i] = Integer(w, "imageIndex", -1);
             sponsorOnly[i] = Flag(w, "isSponsorOnly");
             string portalId = Str(w, "portalWorldId");
@@ -1956,6 +1991,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             rows[r].SetActive(valid || waiting || (r == 0 && (orderCount == 0 || loadFailed)));
             rowMap[r] = valid ? order[p] : -1;
             rows[r].GetComponent<Button>().interactable = valid;
+            if (rowPlatforms != null && r < rowPlatforms.Length && rowPlatforms[r] != null) rowPlatforms[r].text = valid ? Platforms(rowMap[r]) : "";
+            if (rowAuthors != null && r < rowAuthors.Length && rowAuthors[r] != null) rowAuthors[r].text = valid ? FitSingleLine(rowAuthors[r], string.IsNullOrEmpty(authors[rowMap[r]]) ? "" : "by " + authors[rowMap[r]], 16+r) : "";
             if (valid)
             {
                 int i = rowMap[r]; rowTitles[r].text = titles[i]; rowSummaries[r].text = descriptions[i]; SetPhoto(rowPictures[r], i);
@@ -2145,11 +2182,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             int index = start + i;
             ids[index] = ""; portalIds[index] = ""; titles[index] = ""; authors[index] = ""; descriptions[index] = "";
-            pc[index] = false; android[index] = false; recommended[index] = false; sponsorOnly[index] = false; pictureIndices[index] = -1;
+            pcSupport[index] = 0; androidSupport[index] = 0; iosSupport[index] = 0; pc[index] = false; android[index] = false; recommended[index] = false; sponsorOnly[index] = false; pictureIndices[index] = -1;
             if (i >= worlds.Count) continue;
             var w = worlds[i].DataDictionary;
             ids[index] = Str(w, "id"); titles[index] = Str(w, "name"); authors[index] = Str(w, "authorName"); descriptions[index] = Str(w, "description");
-            pc[index] = Flag(w, "pc"); android[index] = Flag(w, "android"); recommended[index] = Flag(w, "recommended"); pictureIndices[index] = Integer(w, "imageIndex", -1);
+            ReadPlatforms(w, index); pc[index] = Flag(w, "pc"); android[index] = Flag(w, "android"); recommended[index] = Flag(w, "recommended"); pictureIndices[index] = Integer(w, "imageIndex", -1);
             portalIds[index] = string.IsNullOrEmpty(Str(w, "portalWorldId")) ? ids[index] : Str(w, "portalWorldId");
         }
         IVRCImageDownload previous = drawDownloads[slot];
@@ -2393,6 +2430,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void BuildFavorites()
     {
         favoriteCount = 0;
+        if (favoriteFolderNames == null || (favoriteFolderNames.Length == 0 && favoriteWorldIds != null && favoriteWorldIds.Length > 0)) favoriteFolderNames = new string[] { "フォルダ1" };
+        favoriteFolderCountsCache = new int[favoriteFolderNames.Length];
         if (!favoritesEnabled || favoriteWorldIds == null || favoriteWorldTitles == null) return;
         int length = Mathf.Min(favoriteWorldIds.Length, favoriteWorldTitles.Length);
         favoriteOrder = new int[length];
@@ -2400,18 +2439,38 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             if (!ValidWorldId(favoriteWorldIds[i]) || string.IsNullOrEmpty(favoriteWorldTitles[i]) || string.IsNullOrEmpty(favoriteWorldTitles[i].Trim()) || favoriteWorldTitles[i].Length > 256) continue;
             bool duplicate = false;
-            for (int j = 0; j < favoriteCount; j++) if (favoriteWorldIds[favoriteOrder[j]] == favoriteWorldIds[i]) duplicate = true;
-            if (!duplicate) favoriteOrder[favoriteCount++] = i;
+            int folder = FavoriteFolderOf(i);
+            if (folder < 0 || folder >= favoriteFolderNames.Length) continue;
+            for (int j = 0; j < i; j++) if (FavoriteFolderOf(j) == folder && favoriteWorldIds[j] == favoriteWorldIds[i] && !string.IsNullOrEmpty(favoriteWorldTitles[j]) && !string.IsNullOrEmpty(favoriteWorldTitles[j].Trim()) && favoriteWorldTitles[j].Length <= 256) duplicate = true;
+            if (duplicate) continue;
+            favoriteFolderCountsCache[folder]++;
+            if (folder == favoriteFolder) favoriteOrder[favoriteCount++] = i;
         }
+    }
+    private int FavoriteFolderOf(int entry) { return favoriteFolderIndices != null && entry < favoriteFolderIndices.Length ? favoriteFolderIndices[entry] : 0; }
+    public void _FavoriteFolders() { favoriteFolder = -1; BuildFavorites(); RenderFavorites(); }
+    public void _FavoriteFolder0() { OpenFavoriteFolder(0); }
+    public void _FavoriteFolder1() { OpenFavoriteFolder(1); }
+    public void _FavoriteFolder2() { OpenFavoriteFolder(2); }
+    public void _FavoriteFolder3() { OpenFavoriteFolder(3); }
+    public void _FavoriteFolder4() { OpenFavoriteFolder(4); }
+    public void _FavoriteFolder5() { OpenFavoriteFolder(5); }
+    public void _FavoriteFolder6() { OpenFavoriteFolder(6); }
+    public void _FavoriteFolder7() { OpenFavoriteFolder(7); }
+    private void OpenFavoriteFolder(int row)
+    {
+        int index = favoriteFolderPage * 8 + row;
+        if (view != 4 || favoriteFolder != -1 || index >= favoriteFolderNames.Length) return;
+        favoriteFolder = index; favoritePage = 0; BuildFavorites(); RenderFavorites();
     }
 
     public void _Favorites()
     {
         if (!favoritesEnabled) return;
-        favoriteTabSelected = true; view = 4; CancelSponsorFade(); Render();
+        favoriteTabSelected = true; favoriteFolder = -1; BuildFavorites(); view = 4; CancelSponsorFade(); Render();
     }
-    public void _FavoritePrevious() { if (favoritePage > 0) favoritePage--; RenderFavorites(); }
-    public void _FavoriteNext() { if ((favoritePage + 1) * 8 < favoriteCount) favoritePage++; RenderFavorites(); }
+    public void _FavoritePrevious() { if (favoriteFolder < 0) { if (favoriteFolderPage > 0) favoriteFolderPage--; } else if (favoritePage > 0) favoritePage--; RenderFavorites(); }
+    public void _FavoriteNext() { if (favoriteFolder < 0) { if ((favoriteFolderPage + 1) * 8 < favoriteFolderNames.Length) favoriteFolderPage++; } else if ((favoritePage + 1) * 8 < favoriteCount) favoritePage++; RenderFavorites(); }
     public void _Favorite0() { RequestFavorite(0); }
     public void _Favorite1() { RequestFavorite(1); }
     public void _Favorite2() { RequestFavorite(2); }
@@ -2427,13 +2486,34 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!favoritesEnabled) { favoritesPanel.SetActive(false); return; }
         favoritesPanel.SetActive(view == 4);
         if (view != 4) return;
+        bool folders = favoriteFolder < 0;
+        if (favoriteBack != null) favoriteBack.gameObject.SetActive(!folders);
+        if (favoriteSection != null) favoriteSection.text = folders ? "お気に入りフォルダ" : "";
+        if (favoriteFolderButtons != null) for (int r = 0; r < favoriteFolderButtons.Length; r++)
+        {
+            int at = favoriteFolderPage * 8 + r;
+            bool visible = folders && at < favoriteFolderNames.Length;
+            favoriteFolderButtons[r].gameObject.SetActive(visible);
+            if (visible) { favoriteFolderTitles[r].text = favoriteFolderNames[at]; favoriteFolderCounts[r].text = favoriteFolderCountsCache[at] + " ワールド"; }
+        }
+        if (folders)
+        {
+            if (favoriteButtons != null) for (int r = 0; r < favoriteButtons.Length; r++) favoriteButtons[r].gameObject.SetActive(false);
+            int folderPages = Mathf.Max(1, (favoriteFolderNames.Length + 7) / 8);
+            if (favoritePageLabel != null) favoritePageLabel.text = (favoriteFolderPage + 1) + " / " + folderPages;
+            if (favoritePrevious != null) favoritePrevious.interactable = favoriteFolderPage > 0;
+            if (favoriteNext != null) favoriteNext.interactable = favoriteFolderPage + 1 < folderPages;
+            if (favoriteHelp != null) favoriteHelp.text = favoriteFolderNames.Length == 0 ? "フォルダはまだ登録されていません。" : "フォルダを選ぶとワールド一覧を開きます。";
+            if (statusLabel != null) statusLabel.text = "設置者が登録したお気に入りワールド";
+            return;
+        }
         int pages = Mathf.Max(1, (favoriteCount + 7) / 8);
         favoritePage = Mathf.Clamp(favoritePage, 0, pages - 1);
         if (favoritePageLabel != null) favoritePageLabel.text = favoriteCount == 0 ? "登録なし" : (favoritePage + 1) + " / " + pages + "  ・  " + favoriteCount + " 件";
         if (favoritePrevious != null) favoritePrevious.interactable = favoritePage > 0;
         if (favoriteNext != null) favoriteNext.interactable = favoritePage + 1 < pages;
         float wait = PortalWait();
-        if (favoriteHelp != null) favoriteHelp.text = favoriteCount == 0 ? "お気に入りワールドはまだ登録されていません。" : wait > 0 ? "ポータルの再作成まで あと " + Mathf.CeilToInt(wait) + " 秒" : "ワールドを押すと、共有ポータルが20秒間出現します。";
+        if (favoriteHelp != null) favoriteHelp.text = favoriteFolderNames[favoriteFolder] + "  /  " + (favoriteCount == 0 ? "登録なし" : wait > 0 ? "ポータルの再作成まで あと " + Mathf.CeilToInt(wait) + " 秒" : "ワールドを押すと共有ポータルが出現します。");
         if (view == 4) statusLabel.text = "設置者が登録したお気に入りワールド";
         if (favoriteButtons == null) return;
         for (int row = 0; row < favoriteButtons.Length; row++)
@@ -2453,7 +2533,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void RequestFavorite(int row)
     {
-        if (!favoritesEnabled || view != 4 || row < 0 || row >= 8 || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
+        if (!favoritesEnabled || view != 4 || favoriteFolder < 0 || row < 0 || row >= 8 || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
         int position = favoritePage * 8 + row;
         if (position >= favoriteCount || favoriteOrder == null || position >= favoriteOrder.Length) return;
         int entry = favoriteOrder[position];
@@ -2613,7 +2693,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             topButtons[k].interactable = valid;
             topTitles[k].text = !ready ? (failed ? "読み込みに失敗しました" : "読み込み中") : valid ? titles[i] : "本日の追加紹介はありません";
             if (topAuthors != null && k < topAuthors.Length && topAuthors[k] != null)
-                topAuthors[k].text = valid && !string.IsNullOrEmpty(authors[i]) ? "by " + authors[i] : "";
+                topAuthors[k].text = valid ? FitSingleLine(topAuthors[k], string.IsNullOrEmpty(authors[i]) ? "" : "by " + authors[i], 14+k) : "";
+            if (topPlatforms != null && k < topPlatforms.Length && topPlatforms[k] != null) topPlatforms[k].text = valid ? Platforms(i) : "";
             topSummaries[k].text = valid ? descriptions[i] : "";
             SetPhoto(topPictures[k], valid ? i : -1);
         }
@@ -2632,11 +2713,23 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         pageLabel.text = pageItems == 0 ? "掲載準備中" : (page + 1) + " / " + Mathf.CeilToInt(pageItems / 4f);
         previousPage.interactable = page > 0; nextPage.interactable = (page + 1) * 4 < pageItems;
         detailTitle.text = titles[selected].Replace("\r", " ").Replace("\n", " "); detailDescription.text = descriptions[selected]; SetPhoto(detailPicture, selected);
-        if (detailAuthor != null) detailAuthor.text = string.IsNullOrEmpty(authors[selected]) ? "" : "by " + authors[selected];
-        bool supported = pc[selected];
+        if (detailAuthor != null)
+        {
+            string fullAuthor = string.IsNullOrEmpty(authors[selected]) ? "" : "by " + authors[selected];
+            detailAuthor.text = fullAuthor;
+            if (detailAuthor.preferredWidth > detailAuthor.rectTransform.rect.width - 2f)
+            {
+                detailAuthor.text = FitSingleLine(detailAuthor, fullAuthor, 20);
+                detailDescription.text = "作者：" + authors[selected] + "\n\n" + descriptions[selected];
+            }
+        }
+        bool supported = pcSupport[selected] > 0;
 #if UNITY_ANDROID
-        supported = android[selected];
+        supported = androidSupport[selected] > 0;
+#elif UNITY_IOS
+        supported = iosSupport[selected] > 0;
 #endif
+        if (detailPlatforms != null) detailPlatforms.text = "PC：" + PlatformWord(pcSupport[selected]) + "　Android：" + PlatformWord(androidSupport[selected]) + "　iOS：" + PlatformWord(iosSupport[selected]);
         platformNotice.text = supported ? "" : "この端末の対応は未確認、または非対応です。ポータルは生成できます。";
         int second = secondSlotIsChill ? dailyChill : dailyTwo;
         previousWorld.interactable = sponsoredDetail ? SponsoredPosition() > 0 : tab == 0 ? selected != dailyOne && TopWorldAvailable(dailyOne) : Position() > 0;
@@ -2711,7 +2804,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             Place(topCaptions[i].rectTransform, compact ? 333 : 20, compact ? 15 : 231, compact ? 410 : 720, compact ? 55 : 32);
             Place(topTitles[i].rectTransform, compact ? 333 : 20, compact ? 80 : 268, compact ? 410 : 704, compact ? 62 : 34);
             if (topAuthors != null && i < topAuthors.Length && topAuthors[i] != null)
-                Place(topAuthors[i].rectTransform, compact ? 333 : 20, compact ? 147 : 302, compact ? 410 : 704, compact ? 27 : 22);
+                Place(topAuthors[i].rectTransform, compact ? 559 : 300, compact ? 147 : 302, compact ? 184 : 424, compact ? 27 : 22);
+            if (topPlatforms != null && i < topPlatforms.Length && topPlatforms[i] != null) Place(topPlatforms[i].rectTransform, compact ? 333 : 20, compact ? 147 : 302, compact ? 222 : 276, compact ? 27 : 22);
             Place(topSummaries[i].rectTransform, compact ? 12 : 20, compact ? 190 : 322, compact ? 736 : 704, 55);
         }
     }
@@ -2837,14 +2931,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         SetPlaceholder(adPicture, cell < 0 || cell >= 16 ? 1 : extraSponsorFailed[1 + cell / detailCellsPerPage] ? 2 : 0);
     }
 
-    // Ten independent lines: four titles, four summaries, and two sponsor titles.
-    private Text[] fittedLabels = new Text[10];
-    private string[] fittedInputs = new string[10];
-    private string[] fittedOutputs = new string[10];
-    private UnityEngine.Object[] fittedFonts = new UnityEngine.Object[10];
-    private int[] fittedSizes = new int[10];
-    private int[] fittedStyles = new int[10];
-    private float[] fittedWidths = new float[10];
+    // Independent caches for titles, summaries and author labels.
+    private Text[] fittedLabels = new Text[21];
+    private string[] fittedInputs = new string[21];
+    private string[] fittedOutputs = new string[21];
+    private UnityEngine.Object[] fittedFonts = new UnityEngine.Object[21];
+    private int[] fittedSizes = new int[21];
+    private int[] fittedStyles = new int[21];
+    private float[] fittedWidths = new float[21];
 
     private string FitSingleLine(Text label, string value, int slot)
     {
@@ -3467,11 +3561,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             int index = start+i;
             ids[index] = ""; portalIds[index] = ""; titles[index] = ""; authors[index] = ""; descriptions[index] = "";
-            pc[index] = false; android[index] = false; recommended[index] = false; sponsorOnly[index] = false; pictureIndices[index] = -1; v3WorldImages[index] = null;
+            pcSupport[index] = 0; androidSupport[index] = 0; iosSupport[index] = 0; pc[index] = false; android[index] = false; recommended[index] = false; sponsorOnly[index] = false; pictureIndices[index] = -1; v3WorldImages[index] = null;
             if (i >= list.Count) continue;
             DataDictionary w = list[i].DataDictionary;
             ids[index] = Str(w,"id"); titles[index] = Str(w,"name"); authors[index] = Str(w,"authorName"); descriptions[index] = Str(w,"description");
-            pc[index] = Flag(w,"pc"); android[index] = Flag(w,"android"); recommended[index] = Flag(w,"recommended");
+            ReadPlatforms(w, index); pc[index] = Flag(w,"pc"); android[index] = Flag(w,"android"); recommended[index] = Flag(w,"recommended");
             portalIds[index] = string.IsNullOrEmpty(Str(w,"portalWorldId")) ? ids[index] : Str(w,"portalWorldId");
             v3WorldImages[index] = V3Object(w,"image"); pictureIndices[index] = v3WorldImages[index] == null ? -1 : i;
         }

@@ -55,7 +55,19 @@ public static class MetaReaFavoritesLayout
 
         var panel = Rect(g.topPanel.transform.parent, "Favorites", 0, 0, 760, 858);
         g.favoritesPanel = panel.gameObject;
-        Label(panel, "Section", "FAVORITE WORLDS", g, 0, 0, 350, 48, 23, g.secondaryColor);
+        g.favoriteSection = Label(panel, "Section", "お気に入りフォルダ", g, 0, 0, 350, 48, 23, g.secondaryColor);
+        g.favoriteBack = Button(panel, "Back to folders", "＜ フォルダ一覧", "_FavoriteFolders", g, 0, 0, 340, 48);
+        g.favoriteBack.GetComponentInChildren<Text>().fontSize = 22;
+        g.favoriteBack.gameObject.SetActive(false);
+        g.favoriteFolderButtons = new Button[8]; g.favoriteFolderTitles = new Text[8]; g.favoriteFolderCounts = new Text[8];
+        for (int i = 0; i < 8; i++)
+        {
+            var folder = Button(panel, "Folder " + i, "", "_FavoriteFolder" + i, g, (i % 2) * 388, 82 + (i / 2) * 192, 372, 176);
+            g.favoriteFolderButtons[i] = folder;
+            g.favoriteFolderTitles[i] = Label(folder.transform, "Folder name", "フォルダ", g, 20, 20, 332, 88, 24, g.headingColor);
+            g.favoriteFolderCounts[i] = Label(folder.transform, "Folder count", "0 ワールド", g, 20, 120, 332, 34, 20, g.secondaryColor);
+            folder.gameObject.SetActive(false);
+        }
         g.favoritePageLabel = Label(panel, "Page", "登録なし", g, 350, 0, 240, 48, 21, g.secondaryColor);
         g.favoritePageLabel.alignment = TextAnchor.MiddleCenter;
         g.favoritePrevious = Button(panel, "Previous", "＜", "_FavoritePrevious", g, 596, 0, 76, 48);
@@ -75,8 +87,8 @@ public static class MetaReaFavoritesLayout
         }
         panel.gameObject.SetActive(false);
         MetaReaClientCompatibility.Apply(g);
-        g.headingTexts = g.headingTexts.Concat(g.favoriteTitles).Distinct().ToArray();
-        g.secondaryTexts = g.secondaryTexts.Concat(g.favoriteAuthors).Concat(new[] { g.favoritePageLabel, g.favoriteHelp }).Distinct().ToArray();
+        g.headingTexts = g.headingTexts.Concat(g.favoriteTitles).Concat(g.favoriteFolderTitles).Distinct().ToArray();
+        g.secondaryTexts = g.secondaryTexts.Concat(g.favoriteAuthors).Concat(g.favoriteFolderCounts).Concat(new[] { g.favoritePageLabel, g.favoriteHelp, g.favoriteSection }).Distinct().ToArray();
         g.buttonTexts = g.buttonTexts.Concat(fifth.GetComponentsInChildren<Text>(true)).Concat(new[] { g.favoritePrevious.GetComponentInChildren<Text>(), g.favoriteNext.GetComponentInChildren<Text>() }).Distinct().ToArray();
         g.accentTexts = g.accentTexts.Concat(panel.GetComponentsInChildren<Text>(true).Where(t => t.name == "Arrow")).Distinct().ToArray();
         g.cardImages = g.cardImages.Concat(panel.GetComponentsInChildren<Button>(true).Select(b => b.GetComponent<Image>())).Concat(new[] { nav[4] }).Distinct().ToArray();

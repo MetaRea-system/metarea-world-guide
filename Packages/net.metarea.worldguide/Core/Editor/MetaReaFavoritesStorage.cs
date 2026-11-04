@@ -46,6 +46,7 @@ public static class MetaReaFavoritesStorage
     public static MetaReaFavoritesProfile Ensure(MetaReaFavoritesSettings settings)
     {
         var existing = Load(settings);
+        if (existing != null) Migrate(existing);
         if (existing != null || !CanStore(settings) || !string.IsNullOrEmpty(settings.favoritesProfileGuid)) return existing;
         System.IO.Directory.CreateDirectory(Folder);
         AssetDatabase.Refresh();
@@ -86,11 +87,48 @@ public static class MetaReaFavoritesStorage
     }
     public static void Apply(MetaReaFavoritesSettings settings, MetaReaFavoritesProfile profile)
     {
-        if (Equal(settings.favoriteWorldIds, profile.favoriteWorldIds) && Equal(settings.favoriteWorldTitles, profile.favoriteWorldTitles) && Equal(settings.favoriteWorldAuthors, profile.favoriteWorldAuthors)) return;
-        settings.favoriteWorldIds = Copy(profile.favoriteWorldIds);
-        settings.favoriteWorldTitles = Copy(profile.favoriteWorldTitles);
-        settings.favoriteWorldAuthors = Copy(profile.favoriteWorldAuthors);
+        Migrate(profile);
+        var ids = new System.Collections.Generic.List<string>();
+        var titles = new System.Collections.Generic.List<string>();
+        var authors = new System.Collections.Generic.List<string>();
+        var indices = new System.Collections.Generic.List<int>();
+        var folders = profile.folders ?? new MetaReaFavoriteFolder[0];
+        var names = folders.Select(f => string.IsNullOrWhiteSpace(f.name) ? "名前未設定" : f.name).ToArray();
+        for (int f = 0; f < folders.Length; f++)
+        {
+            var folder = folders[f];
+            for (int i = 0; i < (folder.favoriteWorldIds?.Length ?? 0); i++)
+            {
+                ids.Add(folder.favoriteWorldIds[i]);
+                titles.Add(i < (folder.favoriteWorldTitles?.Length ?? 0) ? folder.favoriteWorldTitles[i] : "");
+                authors.Add(i < (folder.favoriteWorldAuthors?.Length ?? 0) ? folder.favoriteWorldAuthors[i] : "");
+                indices.Add(f);
+            }
+        }
+        if (Equal(settings.favoriteWorldIds, ids.ToArray()) && Equal(settings.favoriteWorldTitles, titles.ToArray()) && Equal(settings.favoriteWorldAuthors, authors.ToArray()) && Equal(settings.favoriteFolderNames, names) && (settings.favoriteFolderIndices ?? new int[0]).SequenceEqual(indices)) return;
+        settings.favoriteWorldIds = ids.ToArray();
+        settings.favoriteWorldTitles = titles.ToArray();
+        settings.favoriteWorldAuthors = authors.ToArray();
+        settings.favoriteFolderNames = names;
+        settings.favoriteFolderIndices = indices.ToArray();
         Persist(settings);
+    }
+    public static void Migrate(MetaReaFavoritesProfile profile)
+    {
+        if (profile.folderSchemaVersion >= 1) return;
+        string path = AssetDatabase.GetAssetPath(profile);
+        if (!string.IsNullOrEmpty(path))
+        {
+            // Keep an exact serialized snapshot outside the package before any migration.
+            string backup = "MetaReaWorldGuideBackups/Favorites/" + AssetDatabase.AssetPathToGUID(path) + "-before-folders.json";
+            System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(backup));
+            if (!System.IO.File.Exists(backup))
+                System.IO.File.WriteAllText(backup, EditorJsonUtility.ToJson(profile, true), new System.Text.UTF8Encoding(false));
+        }
+        profile.folders = new[] { new MetaReaFavoriteFolder { name = "フォルダ1", favoriteWorldIds = Copy(profile.favoriteWorldIds), favoriteWorldTitles = Copy(profile.favoriteWorldTitles), favoriteWorldAuthors = Copy(profile.favoriteWorldAuthors) } };
+        profile.folderSchemaVersion = 1;
+        EditorUtility.SetDirty(profile);
+        if (!string.IsNullOrEmpty(path)) AssetDatabase.SaveAssetIfDirty(profile);
     }
     static void Persist(MetaReaFavoritesSettings settings)
     {
