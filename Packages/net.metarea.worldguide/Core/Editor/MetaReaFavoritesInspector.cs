@@ -7,8 +7,16 @@ public static class MetaReaFavoritesInspector
 {
     static readonly Dictionary<string, int> destinations = new Dictionary<string, int>();
     static readonly string[] fields = { "favoriteWorldIds", "favoriteWorldTitles", "favoriteWorldAuthors" };
+    static void Align(SerializedProperty array, int count)
+    {
+        int oldCount = array.arraySize; array.arraySize = count;
+        for (int i = oldCount; i < count; i++) array.GetArrayElementAtIndex(i).stringValue = "";
+    }
     static void Transfer(SerializedProperty source, int row, SerializedProperty target)
     {
+        int targetCount = target.FindPropertyRelative(fields[0]).arraySize;
+        Align(target.FindPropertyRelative(fields[1]), targetCount);
+        Align(target.FindPropertyRelative(fields[2]), targetCount);
         foreach (var field in fields)
         {
             var from = source.FindPropertyRelative(field); var to = target.FindPropertyRelative(field);
@@ -84,7 +92,7 @@ public static class MetaReaFavoritesInspector
         var ids = folder.FindPropertyRelative("favoriteWorldIds");
         var titles = folder.FindPropertyRelative("favoriteWorldTitles");
         var authors = folder.FindPropertyRelative("favoriteWorldAuthors");
-        titles.arraySize = ids.arraySize; authors.arraySize = ids.arraySize;
+        Align(titles, ids.arraySize); Align(authors, ids.arraySize);
         EditorGUILayout.LabelField("登録数", ids.arraySize + " 件 / " + Mathf.Max(1, (ids.arraySize + 7) / 8) + " ページ");
         var seen = new HashSet<string>();
         for (int i = 0; i < ids.arraySize; i++)
