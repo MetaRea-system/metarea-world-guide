@@ -805,6 +805,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private float v3ManualRetryAt;
     private float v3DrawRetryAt;
     private float v3ServerWaitUntil;
+    // Busy only throttles JSON; immutable images may continue from a valid manifest.
+    private float v3JsonBusyUntil;
+    private bool v3BusyResponse;
     private bool v3Initialized;
     private float v3NextStringAt;
     private bool v3BootstrapStopped;
@@ -847,9 +850,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void V3ArmRecovery()
     {
         if (v3RecoveryPending) return;
-        float delay = v3RecoveryRound == 0 ? 30f : v3RecoveryRound == 1 ? 60f : v3RecoveryRound == 2 ? 120f : v3RecoveryRound == 3 ? 240f : 300f;
-        v3RecoveryRound = Mathf.Min(4,v3RecoveryRound+1);
-        v3RecoveryAt = Time.realtimeSinceStartup+delay+Random.Range(0f,10f);
+        float delay = v3RecoveryRound == 0 ? 60f : v3RecoveryRound == 1 ? 120f : v3RecoveryRound == 2 ? 240f : 270f;
+        v3RecoveryRound = Mathf.Min(3,v3RecoveryRound+1);
+        v3RecoveryAt = Time.realtimeSinceStartup+delay+Random.Range(0f,30f);
+        v3ManualRetryAt = Mathf.Max(v3ManualRetryAt,v3RecoveryAt);
         v3RecoveryPending = true;
     }
 
@@ -3322,14 +3326,22 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool V3WaitResponse(DataDictionary d)
     {
         if (d == null || Str(d,"schema") != "metarea-guide-wait-v1" || !Flag(d,"waiting")) return false;
-        float wait = Mathf.Clamp(Integer(d,"retryAfter",60),10,300)+Random.Range(0f,10f);
-        v3ServerWaitUntil = Time.realtimeSinceStartup+wait;
+        bool busy = Str(d,"reason") == "busy";
+        float wait = busy ? Mathf.Max(Mathf.Clamp(Integer(d,"retryAfter",5),5,300),V3Backoff(v3RequestAttempts)) : Mathf.Clamp(Integer(d,"retryAfter",60),10,300)+Random.Range(0f,10f);
+        float until = Time.realtimeSinceStartup+wait;
+        if (busy) v3JsonBusyUntil = until;
+        else v3ServerWaitUntil = until;
         v3RequestInFlight = false; sponsorStatusLoading = false;
-        v3RequestRetryAt = v3ServerWaitUntil;
+        v3RequestRetryAt = until;
         serverWaitCount++;
         // Waiting consumes an attempt too. Repeated HTTP 200 wait responses
         // cannot renew an unfinished draw or metadata transaction forever.
-        if (v3RequestAttempts >= 4) V3RequestFailed(true);
+        if (v3RequestAttempts >= 4)
+        {
+            v3BusyResponse = busy;
+            V3RequestFailed(true);
+            v3BusyResponse = false;
+        }
         v3Version++;
         return true;
     }
@@ -3831,6 +3843,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (sharedDisplays != null)
             for (int i = 0; i < sharedDisplays.Length; i++) if (V3WantDisplay(sharedDisplays[i],false)) return;
         if (V3WantDisplay(this,false)) return;
+        // Preserve bandwidth for visible images while any request is recovering.
+        if (v3RecoveryPending || v3RequestAttempts > 0 || Time.realtimeSinceStartup < v3JsonBusyUntil) return;
+        for (int i = 0; i < v3ImageAttempts.Length; i++)
+            if (v3ImageAttempts[i] > 0 && Time.realtimeSinceStartup < v3ImageRetryAt[i]) return;
         if (Time.realtimeSinceStartup < v3NextPrefetchAt) return;
         v3NextPrefetchAt = Time.realtimeSinceStartup+5f;
         v3PassiveImages = true;
@@ -3917,7 +3933,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private float V3Backoff(int attempts)
-    { return (attempts <= 1 ? 10f : attempts == 2 ? 30f : 60f) + Random.Range(0f,5f); }
+    { float delay = attempts <= 1 ? 5f : attempts == 2 ? 10f : 20f; return delay+Random.Range(0f,delay); }
 
     private void V3QueueRequest(int kind, VRCUrl url, int bank, string generation, int category, int set)
     {
@@ -3931,7 +3947,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3SendRequest()
     {
-        if (v3RequestKind == 0 || v3RequestInFlight || Time.realtimeSinceStartup < v3RequestRetryAt || Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ServerWaitUntil) return;
+        if (v3RecoveryPending && Time.realtimeSinceStartup < v3RecoveryAt) return;
+        if (v3RequestKind == 0 || v3RequestInFlight || Time.realtimeSinceStartup < v3RequestRetryAt || Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ServerWaitUntil || Time.realtimeSinceStartup < v3JsonBusyUntil) return;
         if (Time.realtimeSinceStartup-v3RequestQueuedAt > 300f) { V3RequestFailed(true); return; }
         if (!V3RequestContextValid()) { V3CancelRequest(); V3FailDraw("共有結果が更新されました。新しい結果を取得します"); return; }
         if ((v3RequestKind == 3) && !V3BankUsable(v3RequestBank,v3RequestGeneration)) { V3RequestFailed(true); return; }
@@ -3949,16 +3966,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int kind = v3RequestKind;
         V3AbandonStringRequest();
         v3RequestInFlight = false;
-        if (kind == 5 && v4Protocol && !ready) v4ProbeFailures++;
-        if (preferGuideV4 && v4Protocol && !ready && v4PendingBank < 0 && sharedGuideProtocol != 4 && (kind == 1 || kind == 5) && (terminal || v3RequestAttempts >= 4 || v4ProbeFailures >= 4))
-        { V3CancelRequest(); V4SelectProtocol(false); v3BootstrapStopped = false; loading = true; failed = false; v3NextStatus = 0; return; }
+        if (!v3BusyResponse && kind == 5 && v4Protocol && !ready) v4ProbeFailures++;
+        if (!v3BusyResponse && preferGuideV4 && v4Protocol && !ready && v4PendingBank < 0 && sharedGuideProtocol != 4 && (kind == 1 || kind == 5) && (terminal || v3RequestAttempts >= 4 || v4ProbeFailures >= 4))
+        { V3CancelRequest(); V4SelectProtocol(false); v3BootstrapStopped = true; loading = true; failed = false; V3ArmRecovery(); v3NextStatus = v3RecoveryAt; return; }
         if (kind == 7 && (terminal || v3RequestAttempts >= 4))
-        { v3RequestKind = 0; v4PendingStatusAt = Time.realtimeSinceStartup+60f; return; }
-        if (kind == 5)
+        { v3RequestKind = 0; V3ArmRecovery(); v4PendingStatusAt = v3RecoveryAt; return; }
+        if (kind == 5 && (terminal || v3RequestAttempts >= 4))
         {
             v3RequestKind = 0; v3RequestAttempts = 0;
             sponsorStatusLoading = false;
-            v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+            V3ArmRecovery(); v3NextStatus = v3RecoveryAt;
             return;
         }
         if (kind == 4)
@@ -3976,7 +3993,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             // A failed transaction has at most three retries. The normal status
             // poll is a separate, slow transaction and remains fail-closed.
-            v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+            V3ArmRecovery(); v3NextStatus = v3RecoveryAt;
         }
         v3Version++;
     }
@@ -4177,6 +4194,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3BeginDraw(int category, bool user)
     {
+        if (Time.realtimeSinceStartup < v3JsonBusyUntil || (v3RecoveryPending && Time.realtimeSinceStartup < v3RecoveryAt)) return;
         if (v3Maintenance || Time.realtimeSinceStartup < v3ServerWaitUntil || Time.realtimeSinceStartup < v3DrawRetryAt) return;
         if (!V3Owner() || !ready || category < 0 || category > 1 || v3DrawCategory >= 0 || V3SelectionPending(0) || V3SelectionPending(1) || SharedRemaining(sharedDrawBusyEnd) > 0 || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
         v3DrawCategory = category; v3UserDraw = true; v3AwaitCatalog = true;
@@ -4310,11 +4328,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (sharedDataSource != null) { sharedDataSource.V3Retry(); return; }
         if (v3Maintenance) return;
-        if (Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ManualRetryAt || Time.realtimeSinceStartup < v3ServerWaitUntil || v3RequestKind != 0) return;
+        if (Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ManualRetryAt || Time.realtimeSinceStartup < v3ServerWaitUntil || Time.realtimeSinceStartup < v3JsonBusyUntil || (v3RecoveryPending && Time.realtimeSinceStartup < v3RecoveryAt) || v3RequestKind != 0) return;
         v3ManualRetryAt = Time.realtimeSinceStartup+60f;
         v3NextStringAt = Time.realtimeSinceStartup+Random.Range(.5f,5f);
         v3BootstrapStopped = false; v3NextStatus = 0; v3LatestFailed = false;
-        v3RecoveryPending = false; v3RecoveryRound = 0; v3RecoveryBootstrap = V3Owner() && !ready;
+        v3RecoveryPending = false; v3RecoveryBootstrap = V3Owner() && !ready;
         for (int i = 0; i < v3ImageAttempts.Length; i++) if (v3ImageAttempts[i] >= 4) { v3ImageAttempts[i] = 0; v3ImageRetryAt[i] = 0; }
         v3StoppedSelections[0] = ""; v3StoppedSelections[1] = "";
         imageFailed = false; failed = false; v3Version++;
@@ -4329,6 +4347,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3ScheduleMetadata()
     {
+        if (v3RecoveryPending && Time.realtimeSinceStartup < v3RecoveryAt) return;
         if (v4PendingBank >= 0 && !v3Maintenance)
         {
             if (v3RequestKind != 0) { V3SendRequest(); return; }
@@ -4426,7 +4445,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (view != 3) UpdateSponsorRotation();
         }
         V3ScheduleMetadata();
-        if (!v3Maintenance && Time.realtimeSinceStartup >= v3ServerWaitUntil) { PumpAdClicks(); PumpStatistics(); }
+        if (!v3Maintenance && Time.realtimeSinceStartup >= v3ServerWaitUntil && Time.realtimeSinceStartup >= v3JsonBusyUntil) { PumpAdClicks(); PumpStatistics(); }
         if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); V4UpdateUi(); QueueBoardReady(); }
     }
 
@@ -4569,7 +4588,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         int c = tab == 1 ? 0 : 1;
-        int wait = Mathf.CeilToInt(Mathf.Max(source.SharedRemaining(source.sharedDrawCooldownEnd),Mathf.Max(source.v3DrawRetryAt,source.v3ServerWaitUntil)-Time.realtimeSinceStartup));
+        float retryAt = Mathf.Max(Mathf.Max(source.v3DrawRetryAt,source.v3ServerWaitUntil),source.v3JsonBusyUntil);
+        if (source.v3RecoveryPending) retryAt = Mathf.Max(retryAt,source.v3RecoveryAt);
+        int wait = Mathf.CeilToInt(Mathf.Max(source.SharedRemaining(source.sharedDrawCooldownEnd),retryAt-Time.realtimeSinceStartup));
         bool busy = source.SharedDrawBusy() || source.V3SelectionPending(0) || source.V3SelectionPending(1);
         reshuffleButton.interactable = ready && !busy && wait == 0;
         if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);

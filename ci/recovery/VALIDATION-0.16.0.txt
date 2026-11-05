@@ -1,0 +1,21 @@
+MetaRea World GUIDE 0.16.0 — 2026-11-05
+
+Unity 2022.3.22f1: 90 recovery/shared-selection assertions, 25 compiled Udon VM
+assertions, and 56 stability assertions passed. Udon compilation and isolated
+Windows scene AssetBundle build passed. Test scenes were removed afterward.
+No production downloads, VRChat upload, or Archive deployment were performed.
+
+Covered: 5–10/10–20/20–40 second communication retry ranges, independently sampled
+jitter, 60–90/120–150/240–270/270–300 recovery bounds, manual and redraw admission,
+JSON-only busy wait, legacy global wait, no congestion-induced protocol downgrade,
+unchanged draw deadline, previous successful texture retention, and prefetch
+resumption after transient failure. Existing shared selection, ownership change,
+expiry, stale response, memory budget, and simulated outage checks also passed.
+
+Archive 049 contract: metarea-guide-wait-v1 + waiting:true + reason:busy +
+retryAfter:5. Older wait responses retain the previous global delay semantics.
+Images use generic download failure handling; HTTP Retry-After is not parsed.
+64 image / 32 JSON concurrent capacity is an Archive change, not a GUIDE limit.
+
+Not verified: real multi-player VRChat transport, PC/Android device runs, or
+production mass-join latency. Server load tests are owned by Archive separately.

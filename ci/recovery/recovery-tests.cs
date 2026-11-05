@@ -7,7 +7,7 @@ static object C(object o,string n,params object[] a){try{return o.GetType().GetM
 static List<string> checks=new List<string>();static List<Texture2D> textures=new List<Texture2D>();static List<MetaReaWallGuide> guides=new List<MetaReaWallGuide>();
 static void Check(bool b,string n){if(!b)throw new Exception(n);checks.Add(n);}
 static string fixture="C:/Users/一生/Documents/Codex/2026-10-25/t/work/stability/fixtures041/";
-static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/recovery";
+static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/v016/recovery";
 static string boot,gen;static int bank;static Scene scene;
 static DataDictionary D(string json){DataToken t;if(!VRCJson.TryDeserializeFromJson(json,out t))throw new Exception("JSON");return t.DataDictionary;}
 static string J(DataDictionary d){DataToken t;VRCJson.TrySerializeToJson(d,JsonExportType.Minify,out t);return t.String;}
@@ -47,8 +47,8 @@ var aged=Make();aged.v3SharedRecommendedGeneration="bbbbbbbbbbbbbbbb";aged.v3Sha
 var standalone=Make();standalone.isSharedDataSource=false;standalone._RequestSharedDraw(1);Check((bool)G(standalone,"v3AwaitCatalog")&&standalone.sharedDrawBusyTab==1,"standalone board routes redraw through owner request path");double deadline=standalone.sharedDrawBusyEnd;standalone._RequestSharedDraw(1);Check(standalone.sharedDrawBusyEnd==deadline,"repeated redraw request cannot restart active transaction");standalone._RequestSharedDraw(2);Check((int)G(standalone,"v3DrawCategory")==0,"invalid tab cannot change active draw category");
 var sync=Make();sync.OnPostSerialization(new VRC.Udon.Common.SerializationResult(false,0));Check((bool)G(sync,"v3SerializationPending")&&(float)G(sync,"v3SerializationRetryAt")>Time.realtimeSinceStartup+4.9f,"failed network serialization arms bounded resend");sync.OnPostSerialization(new VRC.Udon.Common.SerializationResult(true,100));Check(!(bool)G(sync,"v3SerializationPending"),"successful serialization clears resend state");
 // Complete failure before initial display must not become a permanent stop.
-var down=Make(false);S(down,"v3RequestKind",1);S(down,"v3RequestAttempts",4);C(down,"V3RequestFailed",false);Check((bool)G(down,"v3BootstrapStopped")&&(bool)G(down,"v3RecoveryPending"),"four bootstrap failures enter low-rate recovery");float at=(float)G(down,"v3RecoveryAt");Check(at>=Time.realtimeSinceStartup+29&&at<=Time.realtimeSinceStartup+41,"first recovery waits thirty seconds plus jitter");C(down,"V3Recover");Check((bool)G(down,"v3BootstrapStopped"),"recovery does not run early");S(down,"v3RecoveryAt",0f);C(down,"V3Recover");Check(!(bool)G(down,"v3BootstrapStopped")&&(bool)G(down,"v3RecoveryBootstrap"),"expired stop clears automatically and owner refreshes current catalog");C(down,"V3ScheduleMetadata");Check((int)G(down,"v3RequestKind")==1&&((VRCUrl)G(down,"v3RequestUrl")).Get()==down.feedUrl.Get(),"recovery uses current catalog rather than expired old bank");Reply(down,boot);Check((bool)G(down,"ready")&&!(bool)G(down,"v3RecoveryBootstrap"),"server restoration automatically completes initial bootstrap");
-var backoff=Make(false);float[] delays={30,60,120,240,300,300,300};for(int i=0;i<delays.Length;i++){S(backoff,"v3RecoveryPending",false);C(backoff,"V3ArmRecovery");float wait=(float)G(backoff,"v3RecoveryAt")-Time.realtimeSinceStartup;Check(wait>=delays[i]-.1f&&wait<=delays[i]+10.1f,"bounded recovery delay round "+i);float stable=(float)G(backoff,"v3RecoveryAt");C(backoff,"V3ArmRecovery");Check(stable==(float)G(backoff,"v3RecoveryAt"),"additional failures do not postpone recovery "+i);}
+var down=Make(false);S(down,"v3RequestKind",1);S(down,"v3RequestAttempts",4);C(down,"V3RequestFailed",false);Check((bool)G(down,"v3BootstrapStopped")&&(bool)G(down,"v3RecoveryPending"),"four bootstrap failures enter low-rate recovery");float at=(float)G(down,"v3RecoveryAt");Check(at>=Time.realtimeSinceStartup+59&&at<=Time.realtimeSinceStartup+91,"first recovery waits sixty seconds plus jitter");C(down,"V3Recover");Check((bool)G(down,"v3BootstrapStopped"),"recovery does not run early");S(down,"v3RecoveryAt",0f);C(down,"V3Recover");Check(!(bool)G(down,"v3BootstrapStopped")&&(bool)G(down,"v3RecoveryBootstrap"),"expired stop clears automatically and owner refreshes current catalog");C(down,"V3ScheduleMetadata");Check((int)G(down,"v3RequestKind")==1&&((VRCUrl)G(down,"v3RequestUrl")).Get()==down.feedUrl.Get(),"recovery uses current catalog rather than expired old bank");Reply(down,boot);Check((bool)G(down,"ready")&&!(bool)G(down,"v3RecoveryBootstrap"),"server restoration automatically completes initial bootstrap");
+var backoff=Make(false);float[] delays={60,120,240,270,270,270,270};for(int i=0;i<delays.Length;i++){S(backoff,"v3RecoveryPending",false);C(backoff,"V3ArmRecovery");float wait=(float)G(backoff,"v3RecoveryAt")-Time.realtimeSinceStartup;Check(wait>=delays[i]-.1f&&wait<=delays[i]+30.1f,"bounded recovery delay round "+i);float stable=(float)G(backoff,"v3RecoveryAt");C(backoff,"V3ArmRecovery");Check(stable==(float)G(backoff,"v3RecoveryAt"),"additional failures do not postpone recovery "+i);}
 S(backoff,"v3RecoveryAt",0f);S(backoff,"v3Maintenance",true);C(backoff,"V3Recover");Check((bool)G(backoff,"v3RecoveryPending"),"explicit maintenance owns recovery scheduling");S(backoff,"v3Maintenance",false);S(backoff,"v3ServerWaitUntil",Time.realtimeSinceStartup+100);C(backoff,"V3Recover");Check((bool)G(backoff,"v3RecoveryPending"),"server retryAfter remains authoritative");
 // Lost callbacks cannot exhaust the eight wire slots permanently.
 var wire=Make(false);string url="https://example.invalid/orphan.json";Check((bool)C(wire,"V3TrackStringRequest",url),"wire tracks first request");S(wire,"v3RequestUrl",new VRCUrl(url));C(wire,"V3AbandonStringRequest");Check(!(bool)C(wire,"V3TrackStringRequest",url),"recent abandoned request stays quarantined");var started=(float[])G(wire,"v3WireStarted");for(int i=0;i<started.Length;i++)started[i]=Time.realtimeSinceStartup-601;Check((bool)C(wire,"V3TrackStringRequest",url),"orphaned URL recovers after bounded quarantine");
@@ -60,6 +60,38 @@ var detail=Make();Pending(detail,1,true);Image(detail,3);detail.isSharedDataSour
 var cycle=Make();cycle.v3SharedRecommendedSet=1;C(cycle,"V3ApplyWorlds",0,D(SetJson(1))["worlds"].DataList,bank,gen,1,true,64);Pending(cycle,0,true);C(cycle,"V3TryCommit");Check(cycle.v3SharedRecommendedSet==0&&((int[])G(cycle,"v3DrawSets"))[0]==1,"return to set zero still waits for its full matching image");
 var init=Make(false);S(init,"v3NextStringAt",0f);C(init,"V3Initialize");float first=(float)G(init,"v3NextStringAt")-Time.realtimeSinceStartup;Check(first>=0&&first<=.8f,"first request jitter is below one second");
 Check(!(bool)C(owner,"V3TelemetryAllowed"),"unverified initial status prevents optional telemetry priority inversion");
+
+// 0.16: busy responses throttle JSON only, retain fixed transaction deadlines,
+// and do not misidentify congestion as an unsupported protocol.
+var busy=Make(false);busy.preferGuideV4=true;S(busy,"v4Protocol",true);S(busy,"v3RequestKind",1);
+float fixedDeadline=Time.realtimeSinceStartup+300;S(busy,"v3DrawDeadline",fixedDeadline);
+var busyReply=D("{\"schema\":\"metarea-guide-wait-v1\",\"waiting\":true,\"reason\":\"busy\",\"retryAfter\":5}");
+for(int attempt=1;attempt<=3;attempt++){
+ S(busy,"v3RequestAttempts",attempt);float before=Time.realtimeSinceStartup;C(busy,"V3WaitResponse",busyReply);
+ float lo=attempt==1?5:attempt==2?10:20;float delay=(float)G(busy,"v3JsonBusyUntil")-before;
+ Check(delay>=lo-.1f&&delay<=lo*2+.1f,"busy retry range "+attempt);
+ Check((float)G(busy,"v3ServerWaitUntil")==0,"busy does not globally block valid manifest images "+attempt);
+ Check((float)G(busy,"v3DrawDeadline")==fixedDeadline,"busy cannot extend draw deadline "+attempt);
+ S(busy,"v3NextStringAt",0f);S(busy,"v3RequestRetryAt",0f);C(busy,"V3SendRequest");Check(busy.feedRequestCount==0,"busy blocks even an otherwise ready JSON request "+attempt);
+}
+S(busy,"v3RequestAttempts",4);C(busy,"V3WaitResponse",busyReply);
+Check((bool)G(busy,"v4Protocol")&&(bool)G(busy,"v3RecoveryPending"),"four busy replies recover without protocol downgrade");
+Check((float)G(busy,"v3ManualRetryAt")== (float)G(busy,"v3RecoveryAt"),"manual and automatic recovery share deadline");
+S(busy,"v3NextStringAt",0f);S(busy,"v3ManualRetryAt",0f);S(busy,"v3JsonBusyUntil",0f);C(busy,"V3Retry");
+Check((bool)G(busy,"v3RecoveryPending")&&(bool)G(busy,"v3BootstrapStopped"),"manual retry cannot bypass pending recovery even with other clocks elapsed");
+C(busy,"V3ScheduleMetadata");Check((int)G(busy,"v3RequestKind")==0,"metadata scheduler cannot bypass recovery on changed bootstrap generation");
+var retryDraw=Make();C(retryDraw,"V3ArmRecovery");retryDraw._RequestSharedDraw(1);Check((int)G(retryDraw,"v3DrawCategory")==-1,"redraw button cannot bypass recovery");
+var legacyWait=Make(false);S(legacyWait,"v3RequestAttempts",1);C(legacyWait,"V3WaitResponse",D("{\"schema\":\"metarea-guide-wait-v1\",\"waiting\":true,\"retryAfter\":60}"));
+Check((float)G(legacyWait,"v3ServerWaitUntil")>=Time.realtimeSinceStartup+59&&(float)G(legacyWait,"v3JsonBusyUntil")==0,"legacy non-busy wait remains global and long");
+var samples=new HashSet<float>();for(int attempt=1;attempt<=3;attempt++){bool bounded=true;float lo=attempt==1?5:attempt==2?10:20;for(int i=0;i<64;i++){float value=(float)C(busy,"V3Backoff",attempt);bounded&=value>=lo&&value<=2*lo;samples.Add(value);}Check(bounded,"all sampled retry delays in range "+attempt);}Check(samples.Count>100,"each retry samples independent jitter");
+var imageFailure=Make();Image(imageFailure,0,0);var previous=((Texture2D[])G(imageFailure,"v3CacheTextures"))[0];
+S(imageFailure,"v3ImageKey",bank*32+3);((int[])G(imageFailure,"v3ImageAttempts"))[bank*32+3]=1;float imageBefore=Time.realtimeSinceStartup;C(imageFailure,"V3ImageFailed");
+Check(((Texture2D[])G(imageFailure,"v3CacheTextures"))[0]==previous,"failed new image retains previous successful texture");
+float imageDelay=((float[])G(imageFailure,"v3ImageRetryAt"))[bank*32+3]-imageBefore;Check(imageDelay>=4.9f&&imageDelay<=10.1f,"actual image failure schedules fast retry");
+S(imageFailure,"v3NextPrefetchAt",0f);C(imageFailure,"V3PumpImages");Check((float)G(imageFailure,"v3NextPrefetchAt")==0,"failed image suppresses passive prefetch");
+((float[])G(imageFailure,"v3ImageRetryAt"))[bank*32+3]=0;S(imageFailure,"v3ImageUrls",null);C(imageFailure,"V3PumpImages");Check((float)G(imageFailure,"v3NextPrefetchAt")>Time.realtimeSinceStartup,"prefetch resumes after backoff instead of deadlocking on its own failed request");
+var probe=Make(false);S(probe,"v3RequestKind",5);S(probe,"v3RequestAttempts",1);float probeBefore=Time.realtimeSinceStartup;C(probe,"V3RequestFailed",false);Check((int)G(probe,"v3RequestKind")==5&&(float)G(probe,"v3RequestRetryAt")<=probeBefore+10.1f,"initial status probe uses short communication retry");
+
 Check(guides.TrueForAll(g=>g.feedRequestCount+g.drawRequestCount+g.statusRequestCount+g.imageRequestCount==0),"all outage and multi-client simulations issue zero production requests");
 File.WriteAllLines(output+"/checks.txt",checks);return new{count=checks.Count,checks};
 }finally{EditorSceneManager.ClosePreviewScene(scene);foreach(var t in textures)UnityEngine.Object.DestroyImmediate(t);}}

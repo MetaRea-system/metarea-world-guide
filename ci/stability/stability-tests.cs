@@ -73,7 +73,7 @@ C(g,"V3Retry");S(g,"v3BootstrapStopped",true);S(g,"v3NextStringAt",0f);C(g,"V3Re
 S(g,"v3ManualRetryAt",0f);S(g,"v3RequestKind",1);S(g,"v3RequestAttempts",4);C(g,"V3RequestFailed",true);C(g,"V3Retry");Check((bool)G(g,"v3BootstrapStopped"),"terminal failures enforce a manual retry cooldown");
 // Latest failures stay retryable instead of falsely marking an empty page complete.
 S(g,"v3DrawCategory",2);S(g,"v3LatestComplete",false);C(g,"V3FailDraw","fixture failure");Check((bool)G(g,"v3LatestFailed")&&!(bool)G(g,"v3LatestComplete"),"latest failure is not marked complete");
-S(g,"v3ManualRetryAt",0f);S(g,"v3NextStringAt",0f);C(g,"V3Retry");Check(!(bool)G(g,"v3LatestFailed"),"latest failure can be retried after cooldown");
+S(g,"v3ManualRetryAt",0f);S(g,"v3NextStringAt",0f);S(g,"v3RecoveryAt",0f);C(g,"V3Retry");Check(!(bool)G(g,"v3LatestFailed"),"latest failure can be retried after shared recovery cooldown");
 // Shared active textures are pinned even when their source selection changed.
 var tokens=(string[])G(g,"v3CacheTokens");var ts=(Texture2D[])G(g,"v3CacheTextures");var sizes=(int[])G(g,"v3CacheSizes");var used=(float[])G(g,"v3CacheUsed");
 for(int i=0;i<3;i++){ts[i]=new Texture2D(2,2);textures.Add(ts[i]);tokens[i]=(i+1).ToString("x16");sizes[i]=40;used[i]=Time.realtimeSinceStartup-10-i;}
