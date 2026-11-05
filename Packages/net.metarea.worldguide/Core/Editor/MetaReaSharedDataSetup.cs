@@ -87,7 +87,8 @@ public static class MetaReaSharedDataSetup
             source.statisticsSite = site; source.statisticsEnvironment = environment;
             source.statisticsUrls = MetaReaOnlineSetup.StatisticsUrls(first.feedUrl.Get(), site, environment);
             source.detailTrackingUrls = source.anonymousStatistics ? MetaReaOnlineSetup.DetailTrackingUrls(first.feedUrl.Get()) : new VRC.SDKBase.VRCUrl[0];
-            source.clickUrls = source.anonymousStatistics ? MetaReaOnlineSetup.ClickUrls(first.feedUrl.Get()) : new VRC.SDKBase.VRCUrl[0];
+            source.clickUrls = source.anonymousStatistics ? MetaReaOnlineSetup.ClickUrls(first.feedUrl.Get(), environment) : new VRC.SDKBase.VRCUrl[0];
+            source.portalClickUrls = source.anonymousStatistics ? MetaReaOnlineSetup.PortalClickUrls(first.feedUrl.Get(), environment) : new VRC.SDKBase.VRCUrl[0];
             source.sponsorStatusUrl = first.sponsorStatusUrl;
             source.recommendedDrawUrl = first.recommendedDrawUrl;
             source.randomDrawUrl = first.randomDrawUrl;

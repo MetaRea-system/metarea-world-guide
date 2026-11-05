@@ -19,7 +19,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [Tooltip("OFF: 通常ランダム①＋② / ON: 通常①＋チル")]
     public bool secondSlotIsChill;
     [HideInInspector] public bool unifiedDisplay;
-    [HideInInspector] public int initialDisplayMode;
+    [HideInInspector] public int initialDisplayMode = 1;
     [Min(1f)] public float portalCooldownSeconds = 5f;
     public Transform portalAnchor;
     public VRCPortalMarker portalMarker;
@@ -70,6 +70,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int favoritePage;
     private int[] favoriteOrder;
     private int favoriteCount;
+    [HideInInspector] public bool favoriteFlatList;
+    [HideInInspector] public string[] favoriteFolderDescriptions = new string[0];
     [HideInInspector] public string[] favoriteFolderNames = new string[0];
     [HideInInspector] public int[] favoriteFolderIndices = new int[0];
     [HideInInspector] public Button[] favoriteFolderButtons;
@@ -214,6 +216,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public int statisticsDropped;
 
     [HideInInspector] public VRCUrl[] clickUrls;
+    [HideInInspector] public VRCUrl[] portalClickUrls;
     private int[] adClickSlots, topClickSlots;
     private bool[] adClickAllowed, topClickAllowed, adPortalEnabled;
     private int[] clickQueueSlots, clickQueueOrigins;
@@ -226,7 +229,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private int ClickEntity(string id, string key, int slot, int origin)
     {
-        if (slot < 0 || slot >= 4096 || (origin != 0 && origin != 1)) return -1;
+        if (slot < 0 || slot >= 4096 || (origin != 0 && origin != 1 && origin != 2)) return -1;
+        if (origin == 2) origin = 0;
         int count = origin == 0 ? topCount : adCount;
         for (int i = 0; i < count; i++)
         {
@@ -270,6 +274,33 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         clickCount++;
     }
 
+    // Direct-portal attribution is a separate operation count, with no detail-view debounce.
+    // It is queued only after the local portal request was accepted.
+    private void QueueAdPortal(string id, string key, int slot)
+    {
+        if (!onlineMode || !anonymousStatistics) return;
+        if (sharedDataSource != null && sharedDataSource != this) { sharedDataSource.QueueAdPortal(id, key, slot); return; }
+        if (portalClickUrls == null || portalClickUrls.Length != 4096 || clickSent >= 128 || clickCount >= 32) return;
+        int entity = ClickEntity(id, key, slot, 0);
+        if (entity < 0 || topTypes[entity] != 0 || !CanUseWorld(topWorlds[entity])) return;
+        if (clickQueueSlots == null)
+        {
+            clickQueueSlots = new int[32]; clickQueueOrigins = new int[32];
+            clickQueueIds = new string[32]; clickQueueKeys = new string[32]; clickQueueTimes = new float[32];
+            clickLastTimes = new float[128]; clickLastAdIds = new string[128];
+        }
+        int tail = (clickHead + clickCount) % 32;
+        clickQueueSlots[tail] = slot; clickQueueOrigins[tail] = 2;
+        clickQueueIds[tail] = id; clickQueueKeys[tail] = key; clickQueueTimes[tail] = Time.realtimeSinceStartup;
+        clickCount++;
+    }
+    private VRCUrl AdEventUrl(int index)
+    {
+        if (index < 0) return null;
+        if (index < 8192) return clickUrls != null && index < clickUrls.Length ? clickUrls[index] : null;
+        index -= 8192;
+        return portalClickUrls != null && index < portalClickUrls.Length ? portalClickUrls[index] : null;
+    }
     private bool CanRecordAdDetail(int ad)
     { return IsAdActive(ad) && adDetailCells[ad] >= 0 && adDetailCells[ad] < 16 && (!adPortalEnabled[ad] || CanUseWorld(adWorlds[ad])); }
 
@@ -286,8 +317,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             int at = clickHead; clickHead = (clickHead + 1) % 32; clickCount--;
             if (Time.realtimeSinceStartup - clickQueueTimes[at] > 120f || ClickEntity(clickQueueIds[at], clickQueueKeys[at], clickQueueSlots[at], clickQueueOrigins[at]) < 0) continue;
-            int index = clickQueueSlots[at] * 2 + clickQueueOrigins[at];
-            if (clickUrls[index] == null || string.IsNullOrEmpty(clickUrls[index].Get())) continue;
+            int index = clickQueueOrigins[at] == 2 ? 8192 + clickQueueSlots[at] : clickQueueSlots[at] * 2 + clickQueueOrigins[at];
+            VRCUrl url = AdEventUrl(index);
+            if (url == null || string.IsNullOrEmpty(url.Get())) continue;
             clickSent++; nextClickSend = Time.realtimeSinceStartup + 5.1f;
             nextStatisticsSend = Mathf.Max(nextStatisticsSend, nextClickSend);
             return index;
@@ -299,14 +331,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (!StatisticsRuntimeAllowed()) return;
         int index = TakeAdClick(); if (index < 0) return;
-        clickRequestUrl = clickUrls[index].Get(); clickRequestStarted = Time.realtimeSinceStartup;
+        clickRequestUrl = AdEventUrl(index).Get(); clickRequestStarted = Time.realtimeSinceStartup;
         if (guideV3) v3NextStringAt = Time.realtimeSinceStartup+5.1f;
-        VRCStringDownloader.LoadUrl(clickUrls[index], (IUdonEventReceiver)this);
+        VRCStringDownloader.LoadUrl(AdEventUrl(index), (IUdonEventReceiver)this);
     }
 
     private bool IsAdClickResponse(string url)
     {
-        if (!url.StartsWith("https://metarea.net/api/udon/ad-click/")) return false;
+        if (!url.StartsWith("https://metarea.net/api/udon/ad-click/") && !url.StartsWith("https://metarea.net/api/udon/ad-portal/")) return false;
         if (url == clickRequestUrl) clickRequestUrl = "";
         return true;
     }
@@ -939,6 +971,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             favoriteWorldTitles = favoritesSettings.favoriteWorldTitles;
             favoriteWorldAuthors = favoritesSettings.favoriteWorldAuthors;
             favoriteFolderNames = favoritesSettings.favoriteFolderNames;
+            favoriteFolderDescriptions = favoritesSettings.favoriteFolderDescriptions;
+            favoriteFlatList = favoritesSettings.favoriteFlatList;
             favoriteFolderIndices = favoritesSettings.favoriteFolderIndices;
         }
         BuildFavorites();
@@ -1661,7 +1695,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (topPlacementProtocol)
         {
             if (!IsTopActive(world)) return;
-            if (topTypes[world] == 0 && !v4Layout) { RequestPortal(topWorlds[world]); return; }
+            if (topTypes[world] == 0) { if (RequestPortal(topWorlds[world])) QueueAdPortal(topIds[world], topKeys[world], topClickSlots[world]); return; }
             CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render();
             if (view == 3 && adPanel.activeSelf) QueueAdClick(topIds[world], topKeys[world], topClickSlots[world], 0);
             return;
@@ -2385,19 +2419,20 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         else if (remaining < -2147483.648d) remaining += 4294967.296d;
         return remaining > 0 && remaining <= Mathf.Max(1f, portalCooldownSeconds) ? (float)remaining : 0f;
     }
-    private void RequestPortal(int i)
+    private bool RequestPortal(int i)
     {
-        if (!ready || !CanUseWorld(i) || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
+        if (!ready || !CanUseWorld(i) || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return false;
         localPortalRequestTime = Time.realtimeSinceStartup;
         QueueStatistics(1);
         if (onlineMode && i >= 64)
         {
             if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _DrawPortalOnOwner(portalIds[i], titles[i]);
             else SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(_DrawPortalOnOwner), portalIds[i], titles[i]);
-            return;
+            return true;
         }
         if (Networking.LocalPlayer == null || Networking.IsOwner(gameObject)) _PortalOnOwner(ids[i]);
         else SendCustomNetworkEvent(NetworkEventTarget.Owner, nameof(_PortalOnOwner), ids[i]);
+        return true;
     }
 
     [NetworkCallable(maxEventsPerSecond: 2)]
@@ -2445,10 +2480,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             bool duplicate = false;
             int folder = FavoriteFolderOf(i);
             if (folder < 0 || folder >= favoriteFolderNames.Length) continue;
-            for (int j = 0; j < i; j++) if (FavoriteFolderOf(j) == folder && favoriteWorldIds[j] == favoriteWorldIds[i] && !string.IsNullOrEmpty(favoriteWorldTitles[j]) && !string.IsNullOrEmpty(favoriteWorldTitles[j].Trim()) && favoriteWorldTitles[j].Length <= 256) duplicate = true;
+            for (int j = 0; j < i; j++) if ((favoriteFlatList || FavoriteFolderOf(j) == folder) && favoriteWorldIds[j] == favoriteWorldIds[i] && !string.IsNullOrEmpty(favoriteWorldTitles[j]) && !string.IsNullOrEmpty(favoriteWorldTitles[j].Trim()) && favoriteWorldTitles[j].Length <= 256) duplicate = true;
             if (duplicate) continue;
             favoriteFolderCountsCache[folder]++;
-            if (folder == favoriteFolder) favoriteOrder[favoriteCount++] = i;
+            if (favoriteFlatList || folder == favoriteFolder) favoriteOrder[favoriteCount++] = i;
         }
     }
     private int FavoriteFolderOf(int entry) { return favoriteFolderIndices != null && entry < favoriteFolderIndices.Length ? favoriteFolderIndices[entry] : 0; }
@@ -2464,7 +2499,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void OpenFavoriteFolder(int row)
     {
         int index = favoriteFolderPage * 8 + row;
-        if (view != 4 || favoriteFolder != -1 || index >= favoriteFolderNames.Length) return;
+        if (favoriteFlatList || view != 4 || favoriteFolder != -1 || index >= favoriteFolderNames.Length) return;
         favoriteFolder = index; favoritePage = 0; BuildFavorites(); RenderFavorites();
     }
 
@@ -2473,8 +2508,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!favoritesEnabled) return;
         favoriteTabSelected = true; favoriteFolder = -1; BuildFavorites(); view = 4; CancelSponsorFade(); Render();
     }
-    public void _FavoritePrevious() { if (favoriteFolder < 0) { if (favoriteFolderPage > 0) favoriteFolderPage--; } else if (favoritePage > 0) favoritePage--; RenderFavorites(); }
-    public void _FavoriteNext() { if (favoriteFolder < 0) { if ((favoriteFolderPage + 1) * 8 < favoriteFolderNames.Length) favoriteFolderPage++; } else if ((favoritePage + 1) * 8 < favoriteCount) favoritePage++; RenderFavorites(); }
+    public void _FavoritePrevious() { if (!favoriteFlatList && favoriteFolder < 0) { if (favoriteFolderPage > 0) favoriteFolderPage--; } else if (favoritePage > 0) favoritePage--; RenderFavorites(); }
+    public void _FavoriteNext() { if (!favoriteFlatList && favoriteFolder < 0) { if ((favoriteFolderPage + 1) * 8 < favoriteFolderNames.Length) favoriteFolderPage++; } else if ((favoritePage + 1) * 8 < favoriteCount) favoritePage++; RenderFavorites(); }
     public void _Favorite0() { RequestFavorite(0); }
     public void _Favorite1() { RequestFavorite(1); }
     public void _Favorite2() { RequestFavorite(2); }
@@ -2490,15 +2525,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!favoritesEnabled) { favoritesPanel.SetActive(false); return; }
         favoritesPanel.SetActive(view == 4);
         if (view != 4) return;
-        bool folders = favoriteFolder < 0;
-        if (favoriteBack != null) favoriteBack.gameObject.SetActive(!folders);
-        if (favoriteSection != null) favoriteSection.text = folders ? "お気に入りフォルダ" : "";
+        bool folders = !favoriteFlatList && favoriteFolder < 0;
+        if (favoriteBack != null) favoriteBack.gameObject.SetActive(!favoriteFlatList && !folders);
+        if (favoriteSection != null) favoriteSection.text = folders ? "お気に入りフォルダ" : favoriteFlatList ? "お気に入りワールド" : "";
         if (favoriteFolderButtons != null) for (int r = 0; r < favoriteFolderButtons.Length; r++)
         {
             int at = favoriteFolderPage * 8 + r;
             bool visible = folders && at < favoriteFolderNames.Length;
             favoriteFolderButtons[r].gameObject.SetActive(visible);
-            if (visible) { favoriteFolderTitles[r].text = favoriteFolderNames[at]; favoriteFolderCounts[r].text = favoriteFolderCountsCache[at] + " ワールド"; }
+            if (visible) { favoriteFolderTitles[r].text = favoriteFolderNames[at]; favoriteFolderCounts[r].text = favoriteFolderDescriptions != null && at < favoriteFolderDescriptions.Length ? favoriteFolderDescriptions[at] : ""; }
         }
         if (folders)
         {
@@ -2513,11 +2548,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         int pages = Mathf.Max(1, (favoriteCount + 7) / 8);
         favoritePage = Mathf.Clamp(favoritePage, 0, pages - 1);
-        if (favoritePageLabel != null) favoritePageLabel.text = favoriteCount == 0 ? "登録なし" : (favoritePage + 1) + " / " + pages + "  ・  " + favoriteCount + " 件";
+        if (favoritePageLabel != null) favoritePageLabel.text = favoriteCount == 0 ? "登録なし" : (favoritePage + 1) + " / " + pages;
         if (favoritePrevious != null) favoritePrevious.interactable = favoritePage > 0;
         if (favoriteNext != null) favoriteNext.interactable = favoritePage + 1 < pages;
         float wait = PortalWait();
-        if (favoriteHelp != null) favoriteHelp.text = favoriteFolderNames[favoriteFolder] + "  /  " + (favoriteCount == 0 ? "登録なし" : wait > 0 ? "ポータルの再作成まで あと " + Mathf.CeilToInt(wait) + " 秒" : "ワールドを押すと共有ポータルが出現します。");
+        if (favoriteHelp != null) favoriteHelp.text = (favoriteFlatList ? "" : favoriteFolderNames[favoriteFolder] + "  /  ") + (favoriteCount == 0 ? "登録なし" : wait > 0 ? "ポータルの再作成まで あと " + Mathf.CeilToInt(wait) + " 秒" : "ワールドを押すと共有ポータルが出現します。");
         if (view == 4) statusLabel.text = "設置者が登録したお気に入りワールド";
         if (favoriteButtons == null) return;
         for (int row = 0; row < favoriteButtons.Length; row++)
@@ -2537,7 +2572,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void RequestFavorite(int row)
     {
-        if (!favoritesEnabled || view != 4 || favoriteFolder < 0 || row < 0 || row >= 8 || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
+        if (!favoritesEnabled || view != 4 || (!favoriteFlatList && favoriteFolder < 0) || row < 0 || row >= 8 || PortalWait() > 0 || Time.realtimeSinceStartup - localPortalRequestTime < 1) return;
         int position = favoritePage * 8 + row;
         if (position >= favoriteCount || favoriteOrder == null || position >= favoriteOrder.Length) return;
         int entry = favoriteOrder[position];

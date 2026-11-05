@@ -158,9 +158,10 @@ var back=(RectTransform)display.adPanel.transform.Find("Ad back");var portal=(Re
 Check(!display.adPortalButton.gameObject.activeSelf || back.anchoredPosition.x+back.sizeDelta.x<=portal.anchoredPosition.x,"portal and back controls never overlap");
 Check(display.adTitle.gameObject.activeSelf&&display.adDescription.gameObject.activeSelf,"title and description are live text outside preview");
 S(display,"view",0);C(display,"Render");C(display,"V4UpdateUi");Check(!display.adDownloadStatus.gameObject.activeSelf&&!display.adQrStatus.gameObject.activeSelf,"closing details hides download status");
-// World-only cards also open common details instead of creating a portal.
+// Direct world cards request a portal; the banner still provides the detail screen.
 int worldCard=-1;var types=(int[])G(display,"topTypes");for(int i=0;i<(int)G(display,"topCount");i++)if(types[i]==0){worldCard=i;break;}
-Check(worldCard>=0,"fixture includes a world-only card");C(display,"OpenSponsored",worldCard);Check((int)G(display,"view")==3&&string.IsNullOrEmpty(display.sharedPortalWorldId),"world-only card click does not create an immediate portal");
+Check(worldCard>=0,"fixture includes a world-only card");S(display,"portalCooldownStarted",false);S(display,"localPortalRequestTime",Time.realtimeSinceStartup-2f);C(display,"OpenSponsored",worldCard);Check((int)G(display,"view")==0&&!string.IsNullOrEmpty(display.sharedPortalWorldId),"world-only card directly requests a portal");
+S(display,"currentAd",((int[])G(display,"topAds"))[worldCard]);display._Ad();Check((int)G(display,"view")==3,"banner can still open the world advertisement detail");
 if((bool)C(display,"TopPortalAvailable")){
 g.anonymousStatistics=true;display.anonymousStatistics=true;int prior=(int)G(g,"statisticsCount");S(display,"portalCooldownStarted",false);S(display,"localPortalRequestTime",Time.realtimeSinceStartup-2f);C(display,"_AdPortal");Check((int)G(g,"statisticsCount")==prior+2,"advertising portal records local and owner acceptance");g.anonymousStatistics=false;display.anonymousStatistics=false;
 }else throw new Exception("Advertising portal fixture unavailable");
@@ -179,11 +180,3 @@ var loadingSource=Make();display.sharedDataSource=loadingSource;S(display,"ready
 File.WriteAllLines(output+"/checks.txt",checks);return new{checks=checks.Count,results=checks,output};
 }finally{EditorSceneManager.ClosePreviewScene(scene);foreach(var t in textures)UnityEngine.Object.DestroyImmediate(t);}}
 }
-
-
-
-
-
-
-
-

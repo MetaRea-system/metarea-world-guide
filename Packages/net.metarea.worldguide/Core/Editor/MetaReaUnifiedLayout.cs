@@ -75,6 +75,8 @@ public static class MetaReaUnifiedLayout
             g.favoriteWorldTitles = g.favoritesSettings.favoriteWorldTitles;
             g.favoriteWorldAuthors = g.favoritesSettings.favoriteWorldAuthors;
             g.favoriteFolderNames = g.favoritesSettings.favoriteFolderNames;
+            g.favoriteFolderDescriptions = g.favoritesSettings.favoriteFolderDescriptions;
+            g.favoriteFlatList = g.favoritesSettings.favoriteFlatList;
             g.favoriteFolderIndices = g.favoritesSettings.favoriteFolderIndices;
         }
         typeof(MetaReaWallGuide).GetMethod("BuildFavorites", Flags).Invoke(g, null);

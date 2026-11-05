@@ -93,6 +93,7 @@ public static class MetaReaFavoritesStorage
         var authors = new System.Collections.Generic.List<string>();
         var indices = new System.Collections.Generic.List<int>();
         var folders = profile.folders ?? new MetaReaFavoriteFolder[0];
+        var descriptions = folders.Select(f => f.description ?? "").ToArray();
         var names = folders.Select(f => string.IsNullOrWhiteSpace(f.name) ? "名前未設定" : f.name).ToArray();
         for (int f = 0; f < folders.Length; f++)
         {
@@ -105,11 +106,13 @@ public static class MetaReaFavoritesStorage
                 indices.Add(f);
             }
         }
-        if (Equal(settings.favoriteWorldIds, ids.ToArray()) && Equal(settings.favoriteWorldTitles, titles.ToArray()) && Equal(settings.favoriteWorldAuthors, authors.ToArray()) && Equal(settings.favoriteFolderNames, names) && (settings.favoriteFolderIndices ?? new int[0]).SequenceEqual(indices)) return;
+        if (settings.favoriteFlatList == profile.flatList && Equal(settings.favoriteFolderDescriptions, descriptions) && Equal(settings.favoriteWorldIds, ids.ToArray()) && Equal(settings.favoriteWorldTitles, titles.ToArray()) && Equal(settings.favoriteWorldAuthors, authors.ToArray()) && Equal(settings.favoriteFolderNames, names) && (settings.favoriteFolderIndices ?? new int[0]).SequenceEqual(indices)) return;
         settings.favoriteWorldIds = ids.ToArray();
         settings.favoriteWorldTitles = titles.ToArray();
         settings.favoriteWorldAuthors = authors.ToArray();
         settings.favoriteFolderNames = names;
+        settings.favoriteFolderDescriptions = descriptions;
+        settings.favoriteFlatList = profile.flatList;
         settings.favoriteFolderIndices = indices.ToArray();
         Persist(settings);
     }

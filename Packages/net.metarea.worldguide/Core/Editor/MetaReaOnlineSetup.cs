@@ -15,22 +15,41 @@ public static class MetaReaOnlineSetup
     // Tracking pixels are disabled, including on click and during prefetch.
     public static VRCUrl[] DetailTrackingUrls(string feed) => new VRCUrl[0];
     static VRCUrl[] cachedClickUrls;
-    public static VRCUrl[] ClickUrls(string feed)
+    static string cachedClickEnvironment;
+    public static VRCUrl[] ClickUrls(string feed, string environment = "production")
     {
         if (feed != FeedEndpoint && !IsVersionedOfficialFeed(feed)) return new VRCUrl[0];
-        if (cachedClickUrls == null)
+        environment = StatisticsEnvironment(environment);
+        if (cachedClickUrls == null || cachedClickEnvironment != environment)
         {
+            cachedClickEnvironment = environment;
+            string context = "?version=" + GuideVersion + "&environment=" + environment;
             cachedClickUrls = new VRCUrl[8192];
             for (int slot = 0; slot < 4096; slot++)
             {
-                cachedClickUrls[slot * 2] = new VRCUrl("https://metarea.net/api/udon/ad-click/" + slot + "/top");
-                cachedClickUrls[slot * 2 + 1] = new VRCUrl("https://metarea.net/api/udon/ad-click/" + slot + "/banner");
+                cachedClickUrls[slot * 2] = new VRCUrl("https://metarea.net/api/udon/ad-click/" + slot + "/top" + context);
+                cachedClickUrls[slot * 2 + 1] = new VRCUrl("https://metarea.net/api/udon/ad-click/" + slot + "/banner" + context);
             }
         }
         return cachedClickUrls;
     }
+    static VRCUrl[] cachedPortalClickUrls;
+    static string cachedPortalEnvironment;
+    public static VRCUrl[] PortalClickUrls(string feed, string environment = "production")
+    {
+        if (feed != FeedEndpoint && !IsVersionedOfficialFeed(feed)) return new VRCUrl[0];
+        environment = StatisticsEnvironment(environment);
+        if (cachedPortalClickUrls == null || cachedPortalEnvironment != environment)
+        {
+            cachedPortalEnvironment = environment;
+            cachedPortalClickUrls = new VRCUrl[4096];
+            for (int slot = 0; slot < cachedPortalClickUrls.Length; slot++)
+                cachedPortalClickUrls[slot] = new VRCUrl("https://metarea.net/api/udon/ad-portal/" + slot + "/top?version=" + GuideVersion + "&environment=" + environment);
+        }
+        return cachedPortalClickUrls;
+    }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.16.0";
+    public const string GuideVersion = "0.17.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,

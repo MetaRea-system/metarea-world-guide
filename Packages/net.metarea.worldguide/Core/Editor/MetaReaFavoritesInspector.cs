@@ -44,16 +44,20 @@ public static class MetaReaFavoritesInspector
 
     public static void Draw(SerializedObject serialized)
     {
+        var mode = serialized.FindProperty("flatList");
+        mode.boolValue = EditorGUILayout.Popup("表示形式", mode.boolValue ? 1 : 0, new[] { "フォルダ形式", "ワールド一覧" }) == 1;
+        if (mode.boolValue) EditorGUILayout.HelpBox("すべてのフォルダのワールドを順番に表示します。同じワールドは最初の1件だけ表示します。登録データはそのまま保持されます。", MessageType.Info);
         var folders = serialized.FindProperty("folders");
         for (int f = 0; f < folders.arraySize; f++)
         {
             var folder = folders.GetArrayElementAtIndex(f);
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            folder.isExpanded = EditorGUILayout.Foldout(folder.isExpanded, folder.FindPropertyRelative("name").stringValue + "  (" + folder.FindPropertyRelative(fields[0]).arraySize + "件)", true);
+            folder.isExpanded = EditorGUILayout.Foldout(folder.isExpanded, folder.FindPropertyRelative("name").stringValue, true);
             int move = 0; bool remove = false; int destination = -1;
             if (folder.isExpanded)
             {
                 EditorGUILayout.PropertyField(folder.FindPropertyRelative("name"), new GUIContent("フォルダ名"));
+                EditorGUILayout.PropertyField(folder.FindPropertyRelative("description"), new GUIContent("フォルダ説明文"));
                 EditorGUILayout.BeginHorizontal();
                 using (new EditorGUI.DisabledScope(f == 0)) if (GUILayout.Button("↑")) move = -1;
                 using (new EditorGUI.DisabledScope(f + 1 == folders.arraySize)) if (GUILayout.Button("↓")) move = 1;
@@ -79,6 +83,7 @@ public static class MetaReaFavoritesInspector
         {
             int at = folders.arraySize++; var folder = folders.GetArrayElementAtIndex(at);
             folder.FindPropertyRelative("name").stringValue = "新しいフォルダ";
+            folder.FindPropertyRelative("description").stringValue = "";
             foreach (var field in fields) folder.FindPropertyRelative(field).arraySize = 0;
             folder.isExpanded = true;
         }
@@ -93,7 +98,6 @@ public static class MetaReaFavoritesInspector
         var titles = folder.FindPropertyRelative("favoriteWorldTitles");
         var authors = folder.FindPropertyRelative("favoriteWorldAuthors");
         Align(titles, ids.arraySize); Align(authors, ids.arraySize);
-        EditorGUILayout.LabelField("登録数", ids.arraySize + " 件 / " + Mathf.Max(1, (ids.arraySize + 7) / 8) + " ページ");
         var seen = new HashSet<string>();
         for (int i = 0; i < ids.arraySize; i++)
         {

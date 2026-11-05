@@ -64,8 +64,8 @@ public static class MetaReaFavoritesLayout
         {
             var folder = Button(panel, "Folder " + i, "", "_FavoriteFolder" + i, g, (i % 2) * 388, 82 + (i / 2) * 192, 372, 176);
             g.favoriteFolderButtons[i] = folder;
-            g.favoriteFolderTitles[i] = Label(folder.transform, "Folder name", "フォルダ", g, 20, 20, 332, 88, 24, g.headingColor);
-            g.favoriteFolderCounts[i] = Label(folder.transform, "Folder count", "0 ワールド", g, 20, 120, 332, 34, 20, g.secondaryColor);
+            g.favoriteFolderTitles[i] = Label(folder.transform, "Folder name", "フォルダ", g, 20, 16, 332, 72, 24, g.headingColor);
+            g.favoriteFolderCounts[i] = Label(folder.transform, "Folder count", "", g, 20, 96, 332, 64, 20, g.secondaryColor);
             folder.gameObject.SetActive(false);
         }
         g.favoritePageLabel = Label(panel, "Page", "登録なし", g, 350, 0, 240, 48, 21, g.secondaryColor);
