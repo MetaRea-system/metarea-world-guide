@@ -7,8 +7,8 @@ using System.Security.Cryptography;
 using UnityEditor;
 using UnityEngine;
 
-// Bootstrap imports first. The hidden payload is installed into Packages only
-// AFTER the legacy Assets copies are retired, avoiding duplicate GUID/classes.
+// Layout 3 includes Core in the VCC archive: never remove or rewrite runtime
+// assets during an Editor callback. Layout 2's migrator remains for old payloads.
 [InitializeOnLoad]
 public static class MetaReaVccInstaller
 {
@@ -36,6 +36,12 @@ public static class MetaReaVccInstaller
         try
         {
             var manifest = JsonUtility.FromJson<Manifest>(File.ReadAllText(path));
+            if (manifest != null && manifest.layout == 3)
+            {
+                CompleteDirectInstall(Directory.GetCurrentDirectory(), manifest);
+                force = false;
+                return;
+            }
             var state = File.Exists(StatePath) ? JsonUtility.FromJson<InstallState>(File.ReadAllText(StatePath)) : null;
             if (!force && !File.Exists(JournalPath) && state != null && state.layout == 2 && state.payloadSha256 == manifest.payloadSha256 && manifest.files.All(f => File.Exists(f.path))) return;
             force = false; string backup;
@@ -45,10 +51,68 @@ public static class MetaReaVccInstaller
             AssetDatabase.Refresh();
             Debug.Log("MetaRea World GUIDE " + manifest.version + ": 本体はPackages、設置用プレハブとUserContentはAssetsです。変更前のバックアップ: " + backup);
         }
-        catch (Exception e) { Debug.LogError("MetaRea World GUIDE: 移行を完了できませんでした。変更は復元します。\n" + e.Message + "\n原因を解消後、MetaRea → パッケージ配置を再試行 を実行してください。"); }
+        catch (Exception e) { Debug.LogError("MetaRea World GUIDE: パッケージの確認・設定を完了できませんでした。\n" + e.Message + "\n原因を解消後、MetaRea → パッケージ配置を再試行 を実行してください。"); }
     }
     [MenuItem("MetaRea/パッケージ配置を再試行")]
     public static void Retry() { force = true; Schedule(); }
+    // VCC verifies the archive hash before extraction. Unity may reserialize
+    // compiled Udon assets on import, so do not compare/rewrite Core bytes here.
+    // Only the managed manual and the installation record may be changed.
+    public static void CompleteDirectInstall(string projectRoot, Manifest manifest)
+    {
+        if (manifest == null || manifest.layout != 3 || manifest.files == null || manifest.files.Length == 0)
+            throw new IOException("直接配置の配布情報が不正です。");
+        if (File.Exists(SafePath(projectRoot, JournalPath)))
+            throw new IOException("旧版の移行が中断されています。バックアップを保全して旧版で移行を完了してから更新してください。");
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in manifest.files)
+        {
+            if (!ManagedTarget(f.path) || !seen.Add(f.path)) throw new IOException("配布対象が不正です: " + f.path);
+            string target = SafePath(projectRoot, f.path);
+            if (f.path.StartsWith(CoreRoot + "/", StringComparison.Ordinal) || f.path == CoreRoot + ".meta")
+            {
+                if (!File.Exists(target)) throw new IOException("本体ファイルが不足しています。VCCで再導入してください: " + f.path);
+            }
+            else
+            {
+                string source = SafePath(projectRoot, PackageRoot + "/Documentation~/" + Path.GetFileName(f.path));
+                if (!File.Exists(source) || HashFile(source) != f.sha256) throw new IOException("説明書の検証に失敗しました。");
+            }
+        }
+        // Old Assets-based installations must first use 0.17.0's backed-up
+        // migration. Never delete user-edited legacy assets on this code path.
+        if (manifest.legacyFiles != null) foreach (var f in manifest.legacyFiles)
+        {
+            if (!f.path.StartsWith("Scripts/", StringComparison.Ordinal) || !f.path.EndsWith(".cs", StringComparison.Ordinal)) continue;
+            foreach (string root in new[] { AssetRoot, LegacyRoot })
+                if (File.Exists(SafePath(projectRoot, root + "/" + f.path)))
+                    throw new IOException("Assets内に旧本体があります。先に0.17.0で移行を完了してから更新してください。");
+        }
+        string statePath = SafePath(projectRoot, StatePath);
+        string stateJson = JsonUtility.ToJson(new InstallState { layout = 3, version = manifest.version, payloadSha256 = manifest.payloadSha256, files = manifest.files }, true);
+        var journal = new Journal { backup = "MetaReaWorldGuideBackups/" + DateTime.UtcNow.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0,8) };
+        try
+        {
+            foreach (var f in manifest.files)
+            {
+                if (!f.path.StartsWith(AssetRoot + "/README.txt", StringComparison.Ordinal)) continue;
+                string target = SafePath(projectRoot, f.path);
+                if (File.Exists(target) && (f.path.EndsWith(".meta", StringComparison.Ordinal) || HashFile(target) == f.sha256)) continue;
+                BeforeChange(projectRoot, journal, f.path);
+                Directory.CreateDirectory(Path.GetDirectoryName(target));
+                File.Copy(SafePath(projectRoot, PackageRoot + "/Documentation~/" + Path.GetFileName(f.path)), target, true);
+            }
+            if (!File.Exists(statePath) || File.ReadAllText(statePath) != stateJson)
+            {
+                BeforeChange(projectRoot, journal, StatePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(statePath));
+                File.WriteAllText(statePath, stateJson);
+            }
+            string pending = SafePath(projectRoot, JournalPath);
+            if (File.Exists(pending)) File.Delete(pending);
+        }
+        catch { Recover(projectRoot); throw; }
+    }
     public static string HashFile(string path)
     {
         using (var hash = SHA256.Create()) using (var stream = File.OpenRead(path))

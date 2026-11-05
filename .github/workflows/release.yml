@@ -65,7 +65,7 @@ jobs:
             echo "Scene files must not be included in the MetaRea package."
             exit 1
           fi
-      # The staged ZIP intentionally imports only the migration bootstrap first.
+      # Core is present in the ZIP before Unity imports scenes and prefab variants.
       
       # Make a release tag of the version from the package.json file 
       - name: Create Tag

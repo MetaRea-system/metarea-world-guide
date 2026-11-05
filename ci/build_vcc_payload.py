@@ -1,4 +1,4 @@
-"""Validate package sources and stage an atomic VCC bootstrap distribution."""
+"""Validate and package the complete runtime so references exist on first import."""
 import argparse
 import hashlib
 import json
@@ -69,20 +69,22 @@ def build(output):
     if output.exists(): raise ValueError('Choose a new output folder; existing artifacts are not overwritten')
     output.mkdir(parents=True)
     stage=output/'package';stage.mkdir()
-    # Only the independent bootstrap is initially importable by Unity. Core is
-    # exposed by its transaction after legacy Assets GUIDs are removed.
-    for name in ('Editor','Editor.meta','package.json','package.json.meta','README.md','README.md.meta'):
+    # VCC replaces the package before Unity opens it. Core must be present now,
+    # not extracted by a delayed callback after scene/prefab imports have begun.
+    for name in ('Core','Core.meta','Editor','Editor.meta','package.json','package.json.meta','README.md','README.md.meta'):
         source=PACKAGE/name;target=stage/name
         if source.is_dir():shutil.copytree(source,target)
         else:shutil.copy2(source,target)
     payload=stage/'Payload~';payload.mkdir()
+    docs=stage/'Documentation~';docs.mkdir()
+    for name in ('README.txt','README.txt.meta'): shutil.copy2(USER/name,docs/name)
     records=[{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p)} for p in files]
-    deterministic_zip(payload/'files.zip',[(record['path'],path) for record,path in zip(records,files)])
-    manifest={'layout':2,'version':version,'payloadSha256':digest(payload/'files.zip'),'files':records,'legacyFiles':legacy}
+    fingerprint=hashlib.sha256(json.dumps(records,sort_keys=True,separators=(',',':')).encode()).hexdigest()
+    manifest={'layout':3,'version':version,'payloadSha256':fingerprint,'files':records,'legacyFiles':legacy}
     (payload/'manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     archive=output/f'net.metarea.worldguide-{version}.zip'
     deterministic_zip(archive,[(p.relative_to(stage).as_posix(),p) for p in stage.rglob('*') if p.is_file()])
-    report={'version':version,'layout':2,'payloadFiles':len(files),'uniqueGuids':guids,'checkedReferences':refs,'zipSha256':digest(archive),'zipBytes':archive.stat().st_size,'published':False,'runtimeRoot':'Packages/net.metarea.worldguide/Core','userRoot':'Assets/MetaRea_World_GUIDE'}
+    report={'version':version,'layout':3,'payloadFiles':len(files),'uniqueGuids':guids,'checkedReferences':refs,'zipSha256':digest(archive),'zipBytes':archive.stat().st_size,'published':False,'runtimeRoot':'Packages/net.metarea.worldguide/Core','userRoot':'Assets/MetaRea_World_GUIDE','coreAvailableBeforeEditorLoad':True}
     (output/'verification.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps(report,ensure_ascii=False))
 
