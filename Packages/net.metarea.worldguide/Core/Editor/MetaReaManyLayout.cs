@@ -57,6 +57,7 @@ public static class MetaReaManyLayout
             g.cardImages = g.cardImages.Concat(g.manyButtons.Select(b => b.GetComponent<Image>())).Distinct().ToArray();
             g.borderOutlines = g.GetComponentsInChildren<Outline>(true);
             foreach (var button in g.topButtons) button.gameObject.SetActive(false);
+            MetaReaPhotoOverlay.Apply(g);
             var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
             typeof(MetaReaWallGuide).GetMethod("RenderMany", flags).Invoke(g, null);
             g._ApplyAppearance();

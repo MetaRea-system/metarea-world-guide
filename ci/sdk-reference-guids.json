@@ -14,5 +14,6 @@
   "d199490a83bb2b844b9695cbf13b01ef": "Packages/com.unity.ugui/Runtime/UI/Core/InputField.cs",
   "dc42784cf147c0c48a680349fa168899": "Packages/com.unity.ugui/Runtime/UI/Core/GraphicRaycaster.cs",
   "e19747de3f5aca642ab2be37e372fb86": "Packages/com.unity.ugui/Runtime/UI/Core/VertexModifiers/Outline.cs",
-  "fe87c0e1cc204ed48ad3b37840f39efc": "Packages/com.unity.ugui/Runtime/UI/Core/Image.cs"
+  "fe87c0e1cc204ed48ad3b37840f39efc": "Packages/com.unity.ugui/Runtime/UI/Core/Image.cs",
+  "cfabb0440166ab443bba8876756fdfa9": "Packages/com.unity.ugui/Runtime/UI/Core/VertexModifiers/Shadow.cs"
 }

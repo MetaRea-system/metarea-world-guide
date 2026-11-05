@@ -8,7 +8,7 @@ static void S(object x,string n,object v)=>x.GetType().GetField(n,F).SetValue(x,
 static object C(object x,string n,params object[] a){try{return x.GetType().GetMethod(n,F).Invoke(x,a);}catch(TargetInvocationException e){throw e.InnerException;}}
 static List<string> checks=new List<string>(); static List<Texture2D> textures=new List<Texture2D>();
 static string fixture="C:/Users/一生/Documents/Codex/2026-10-12/files-mentioned-by-the-user-codex/patch045-work/fixtures/guide-v4/";
-static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/v015/integration";
+static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/v0172/integration";
 static DataDictionary boot,status;static string gen;static int bank;static double now;static Scene scene;
 static void Check(bool b,string n){if(!b)throw new Exception("CHECK FAILED: "+n);checks.Add(n);}
 static DataDictionary D(string json){DataToken t;if(!VRCJson.TryDeserializeFromJson(json,out t))throw new Exception("json");return t.DataDictionary;}
@@ -59,23 +59,28 @@ Check(display.sponsoredWorldPictures[0].texture==((Texture2D[])G(g,"v3CacheTextu
 display.initialDisplayMode=1;C(display,"InitializeDisplayMode");C(display,"Render");
 for(int i=0;i<4;i++){
 var p=display.manyPictures[i].rectTransform;var t=display.manyTitles[i].rectTransform;var summary=display.manySummaries[i].rectTransform;
-Check(Mathf.Abs(p.rect.height-138)<.01f,"four-card photo height "+i);
-Check(-p.anchoredPosition.y+p.rect.height<=-display.manyCaptions[i].rectTransform.anchoredPosition.y,"caption does not overlap photo "+i);
+Check(Mathf.Abs(p.rect.height-194)<.01f,"four-card photo height "+i);
+Check(display.manyCaptions[i].rectTransform.anchoredPosition.y==-14 && display.manyCaptions[i].fontSize==14,"small caption at upper left "+i);
+Check(!display.manyPhotoGradients[i].gameObject.activeSelf,"caption has no black background "+i);
+var plate=display.manyTitleBackplates[i];
+Check(plate.gameObject.activeSelf && plate.type==UnityEngine.UI.Image.Type.Sliced && plate.sprite.border.x>0,"rounded title background enabled "+i);
+Check(Mathf.Abs(plate.rectTransform.rect.width-Mathf.Min(348,display.manyTitles[i].preferredWidth+8))<.01f,"title background fits actual text width "+i);
+Check(!plate.raycastTarget,"background does not block clicks "+i);
 Check(-t.anchoredPosition.y+t.rect.height<=-summary.anchoredPosition.y,"title does not overlap summary "+i);
 Check(-summary.anchoredPosition.y+summary.rect.height<=-display.manyAuthors[i].rectTransform.anchoredPosition.y,"summary does not overlap author "+i);
 }
 Capture(display,"01-top");
-var measure=display.manyTitles[0];
+var measure=display.manyTitles[0];float fitWidth=measure.rectTransform.rect.width-2;
 string[] samples={"Short world","Late Night Movie DREAM - 真夜中の映画館",new string('i',90),new string('W',90),new string('あ',40),"English と 日本語が混ざるタイトルの表示を確認します","<b>literal</b> title",""};
 var measured=new List<string>();foreach(string sample in samples){
 measure.text=sample;float full=measure.preferredWidth;
 string result=(string)C(display,"FitSingleLine",measure,sample,0);measure.text=result;
-Check(measure.preferredWidth<=350.01f,"measured line fits "+measured.Count);
-if(full<=350)Check(result==sample,"fitting text preserved "+measured.Count);
+Check(measure.preferredWidth<=fitWidth+.01f,"measured line fits "+measured.Count);
+if(full<=fitWidth)Check(result==sample,"fitting text preserved "+measured.Count);
 else{
 Check(result.EndsWith("…"),"overflow uses ellipsis "+measured.Count);
 int end=result.Length-1;bool longerFits=false;
-for(int n=end+1;n<sample.Length;n++){measure.text=sample.Substring(0,n)+"…";if(measure.preferredWidth<=350)longerFits=true;}
+for(int n=end+1;n<sample.Length;n++){measure.text=sample.Substring(0,n)+"…";if(measure.preferredWidth<=fitWidth)longerFits=true;}
 Check(!longerFits,"longest fitting prefix "+measured.Count);
 }
 measure.text=result;measured.Add(result);
@@ -86,9 +91,9 @@ Check(measured[1].Length>17,"mixed English title uses space beyond old character
 measure.rectTransform.sizeDelta=new Vector2(180,30);
 string narrow=(string)C(display,"FitSingleLine",measure,samples[1],0);measure.text=narrow;
 Check(measure.preferredWidth<=178.01f&&narrow.Length<measured[1].Length,"width change invalidates cache");
-measure.rectTransform.sizeDelta=new Vector2(352,30);measure.fontSize=16;
+measure.rectTransform.sizeDelta=new Vector2(340,30);measure.fontSize=16;
 string small=(string)C(display,"FitSingleLine",measure,samples[1],0);measure.text=small;
-Check(measure.preferredWidth<=350.01f&&small.Length>=measured[1].Length,"font size change invalidates cache");
+Check(measure.preferredWidth<=fitWidth+.01f&&small.Length>=measured[1].Length,"font size change invalidates cache");
 measure.fontSize=20;
 string unicode="日本語😀e\u0301と絵文字を含む長いタイトルをここに追加して省略を確認";
 for(int width=1;width<120;width+=3){
@@ -108,7 +113,7 @@ display.manySummaries[i].text=(string)C(display,"FitSingleLine",display.manySumm
 display.manyAuthors[i].text="by 作者名";
 var texture=new Texture2D(2,2);textures.Add(texture);ImageConversion.LoadImage(texture,File.ReadAllBytes("C:/Users/一生/Documents/Codex/2026-10-25/t/work/downloaded-photos/preview-"+i+".png"));
 display.manyPictures[i].texture=texture;
-float crop=138f/356f*((float)texture.width/texture.height);
+float crop=194f/356f*((float)texture.width/texture.height);
 display.manyPictures[i].uvRect=new Rect(0,(1-crop)/2,1,crop);
 }
 Check(display.manyTitles[0].text.EndsWith("…"),"long world title ellipsis");
@@ -122,6 +127,7 @@ Capture(display,"02-layout-preview");
 int savedSponsors=(int)G(display,"sponsoredCount");
 S(display,"sponsoredCount",0);C(display,"RenderMany");
 for(int i=0;i<4;i++){
+Check(!display.manyTitleBackplates[i].gameObject.activeSelf && !display.manyTitleShadows[i].enabled,"ad-free overlay hidden "+i);
 var cap=display.manyCaptions[i].rectTransform;var title=display.manyTitles[i].rectTransform;var summary=display.manySummaries[i].rectTransform;
 Check(Mathf.Abs(-title.anchoredPosition.y-(-cap.anchoredPosition.y+cap.rect.height)-10)<.01f,"ad-free caption/title 10px "+i);
 Check(Mathf.Abs(-summary.anchoredPosition.y-(-title.anchoredPosition.y+title.rect.height)-10)<.01f,"ad-free title/summary 10px "+i);
@@ -131,7 +137,7 @@ Check(display.manyAuthors[i].rectTransform.anchoredPosition.y==-358,"ad-free aut
 for(int i=0;i<4;i++)Check(-display.manySummaries[i].rectTransform.anchoredPosition.y+display.manySummaries[i].rectTransform.rect.height<=-display.manyAuthors[i].rectTransform.anchoredPosition.y,"enlarged image text fits above author "+i);
 Capture(display,"03-no-ads-spacing");
 S(display,"sponsoredCount",savedSponsors);C(display,"RenderMany");
-for(int i=0;i<4;i++)Check(display.manyPictures[i].rectTransform.rect.height==138 && display.manyTitles[i].rectTransform.anchoredPosition.y==-172 && display.manySummaries[i].rectTransform.anchoredPosition.y==-204 && display.manyAuthors[i].rectTransform.anchoredPosition.y==-228,"advertising layout unchanged after switch "+i);
+for(int i=0;i<4;i++)Check(display.manyPictures[i].rectTransform.rect.height==194 && display.manyTitles[i].rectTransform.anchoredPosition.y==-172 && display.manySummaries[i].rectTransform.anchoredPosition.y==-204 && display.manyAuthors[i].rectTransform.anchoredPosition.y==-228,"advertising layout unchanged after switch "+i);
 
 // Exercise actual local/owner acceptance paths against a ready v4 fixture.
 g.anonymousStatistics=true;display.anonymousStatistics=true;g.statisticsUrls=MetaReaOnlineSetup.StatisticsUrls(MetaReaOnlineSetup.FeedUrl,"fixture","test");

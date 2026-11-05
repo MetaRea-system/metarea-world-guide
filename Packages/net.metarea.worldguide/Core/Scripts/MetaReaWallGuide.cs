@@ -474,6 +474,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public bool manyVersion;
     [HideInInspector] public Button[] manyButtons;
     [HideInInspector] public RawImage[] manyPictures;
+    [HideInInspector] public Image[] manyPhotoGradients;
+    [HideInInspector] public Image[] manyTitleBackplates;
+    [HideInInspector] public Shadow[] manyCaptionShadows, manyTitleShadows;
     [HideInInspector] public Text[] manyCaptions, manyTitles, manyAuthors;
     [HideInInspector] public Text[] manySummaries;
     private int[] manyWorlds = new int[4];
@@ -529,12 +532,25 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             int w = manyWorlds[k]; bool valid = TopWorldAvailable(w);
             bool compact = ready && sponsoredCount > 0;
             float height = compact ? 255f : 387f;
-            float photoHeight = compact ? 138f : 230f;
+            float photoHeight = compact ? 194f : 230f;
             Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
-            Place(manyCaptions[k].rectTransform, 10, photoHeight + (compact ? 10 : 18), 352, compact ? 24 : 28);
-            manyCaptions[k].fontSize = compact ? 16 : 18;
-            Place(manyTitles[k].rectTransform, 10, photoHeight + (compact ? 34 : 56), 352, 30);
+            Place(manyCaptions[k].rectTransform, compact ? 16 : 10, compact ? 14 : photoHeight + 18, compact ? 340 : 352, compact ? 22 : 28);
+            manyCaptions[k].resizeTextForBestFit = false;
+            manyCaptions[k].fontSize = compact ? 14 : 18;
+            Place(manyTitles[k].rectTransform, compact ? 16 : 10, compact ? photoHeight - 22 : photoHeight + 56, compact ? 340 : 352, 30);
+            if (manyPhotoGradients != null && k < manyPhotoGradients.Length && manyPhotoGradients[k] != null)
+            {
+                manyPhotoGradients[k].gameObject.SetActive(false);
+                Place(manyPhotoGradients[k].rectTransform,12,photoHeight-46,348,24);
+            }
+            if (manyTitleBackplates != null && k < manyTitleBackplates.Length && manyTitleBackplates[k] != null)
+            {
+                manyTitleBackplates[k].gameObject.SetActive(compact);
+                Place(manyTitleBackplates[k].rectTransform,12,photoHeight-22,348,30);
+            }
+            if (manyCaptionShadows != null && k < manyCaptionShadows.Length && manyCaptionShadows[k] != null) manyCaptionShadows[k].enabled = compact;
+            if (manyTitleShadows != null && k < manyTitleShadows.Length && manyTitleShadows[k] != null) manyTitleShadows[k].enabled = compact;
             manyTitles[k].fontSize = 20;
             manyTitles[k].resizeTextForBestFit = false;
             manyTitles[k].resizeTextMinSize = 20;
@@ -556,10 +572,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 waiting = !loadFailed && (!drawHasResult[0] || (guideV3 && !v3DrawComplete[0] && v3ListCounts[0] > drawCounts[0]));
             }
             manyTitles[k].text = valid ? FitSingleLine(manyTitles[k],titles[w],k) : guideV3 && onlineMode && v3Maintenance ? "メンテナンス中" : waiting ? "読み込み中" : loadFailed ? "読み込みに失敗しました" : "掲載対象がありません";
+            if (compact)
+            {
+                if (manyPhotoGradients != null && k < manyPhotoGradients.Length && manyPhotoGradients[k] != null)
+                    Place(manyPhotoGradients[k].rectTransform,12,photoHeight-46,Mathf.Min(348f,manyCaptions[k].preferredWidth+8f),24);
+                if (manyTitleBackplates != null && k < manyTitleBackplates.Length && manyTitleBackplates[k] != null)
+                    Place(manyTitleBackplates[k].rectTransform,12,photoHeight-22,Mathf.Min(348f,manyTitles[k].preferredWidth+8f),30);
+            }
             manyAuthors[k].text = valid ? FitSingleLine(manyAuthors[k], string.IsNullOrEmpty(authors[w]) ? "" : "by " + authors[w], 10+k) : "";
             if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
             {
-                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 66 : 96),352,24);
+                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 10 : 96),352,24);
                 manySummaries[k].text = valid ? FitSingleLine(manySummaries[k],TopIntroduction(descriptions[w]),4+k) : "";
             }
             SetPhoto(manyPictures[k], valid ? w : -1);
