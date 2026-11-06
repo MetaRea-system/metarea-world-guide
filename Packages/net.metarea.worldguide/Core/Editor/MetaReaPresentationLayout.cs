@@ -6,7 +6,7 @@ using UdonSharpEditor;
 
 public static class MetaReaPresentationLayout
 {
-    [MenuItem("MetaRea/壁新聞の配色・設定を開く")]
+
     public static void SelectGuide()
     {
         var g = Object.FindObjectOfType<MetaReaWallGuide>();
@@ -15,7 +15,6 @@ public static class MetaReaPresentationLayout
         EditorGUIUtility.PingObject(g.gameObject);
     }
 
-    [MenuItem("MetaRea/選択した壁新聞を最新版レイアウトに更新")]
     public static void UpgradeSelected()
     {
         var g = Selection.activeGameObject == null ? null : Selection.activeGameObject.GetComponentInParent<MetaReaWallGuide>();

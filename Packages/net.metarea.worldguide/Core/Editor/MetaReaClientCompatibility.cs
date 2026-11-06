@@ -5,7 +5,7 @@ using VRC.SDK3.Components;
 
 public static class MetaReaClientCompatibility
 {
-    [MenuItem("MetaRea/選択した壁新聞の撮影・操作設定を修復")]
+
     public static void RepairSelected()
     {
         var g = Selection.activeGameObject == null ? null : Selection.activeGameObject.GetComponentInParent<MetaReaWallGuide>();

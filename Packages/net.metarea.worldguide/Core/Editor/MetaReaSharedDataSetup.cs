@@ -36,7 +36,6 @@ public static class MetaReaSharedDataSetup
         EditorApplication.delayCall += () => { scheduled = false; if (!EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isCompiling) PrepareAll(); };
     }
 
-    [MenuItem("MetaRea/複数ボードの共通データ接続を更新")]
     public static void PrepareAll()
     {
         if (EditorApplication.isPlaying || preparing) return;

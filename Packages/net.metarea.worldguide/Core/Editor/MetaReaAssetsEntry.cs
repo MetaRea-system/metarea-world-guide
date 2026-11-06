@@ -30,10 +30,9 @@ public static class MetaReaAssetsEntry
         if (EditorApplication.isCompiling || EditorApplication.isUpdating || EditorApplication.isPlayingOrWillChangePlaymode)
         { Schedule(); return; }
         try { EnsureEntry(true); }
-        catch (Exception error) { Debug.LogError("MetaRea World GUIDE: 導入用プレハブを作成できませんでした。MetaReaメニューから再試行してください。\n" + error.Message); }
+        catch (Exception error) { Debug.LogError("MetaRea World GUIDE: 導入用プレハブを作成できませんでした。Consoleのエラーを確認してください。\n" + error.Message); }
     }
 
-    [MenuItem("MetaRea/導入用プレハブを表示")]
     public static void ShowEntry()
     {
         EnsureEntry(false);

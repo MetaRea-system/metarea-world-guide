@@ -51,9 +51,9 @@ public static class MetaReaVccInstaller
             AssetDatabase.Refresh();
             Debug.Log("MetaRea World GUIDE " + manifest.version + ": 本体はPackages、設置用プレハブとUserContentはAssetsです。変更前のバックアップ: " + backup);
         }
-        catch (Exception e) { Debug.LogError("MetaRea World GUIDE: パッケージの確認・設定を完了できませんでした。\n" + e.Message + "\n原因を解消後、MetaRea → パッケージ配置を再試行 を実行してください。"); }
+        catch (Exception e) { Debug.LogError("MetaRea World GUIDE: パッケージの確認・設定を完了できませんでした。\n" + e.Message + "\n原因を解消後、Unityを開き直してください。"); }
     }
-    [MenuItem("MetaRea/パッケージ配置を再試行")]
+
     public static void Retry() { force = true; Schedule(); }
     // VCC verifies the archive hash before extraction. Unity may reserialize
     // compiled Udon assets on import, so do not compare/rewrite Core bytes here.

@@ -6,6 +6,7 @@ using UdonSharpEditor;
 public class MetaReaWallGuideInspector : Editor
 {
     bool customColors;
+    bool favoritesOpen = true;
     readonly System.Collections.Generic.Dictionary<string, SerializedProperty> properties = new System.Collections.Generic.Dictionary<string, SerializedProperty>();
     void OnEnable() { properties.Clear(); }
     SerializedProperty Property(string name)
@@ -28,7 +29,8 @@ public class MetaReaWallGuideInspector : Editor
             return;
         }
         serializedObject.Update();
-        EditorGUILayout.LabelField("MetaRea WORLD GUIDE",EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("MetaRea WORLD GUIDE  " + MetaReaOnlineSetup.GuideVersion,EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox("配置したらそのまま使えます。位置・向き・大きさはTransformで調整し、シーンを保存してください。", MessageType.None);
         var currentGuide = (MetaReaWallGuide)target;
         bool displayChanged = false;
         if (currentGuide.unifiedDisplay)
@@ -82,12 +84,7 @@ public class MetaReaWallGuideInspector : Editor
         if (currentGuide.unifiedDisplay || !currentGuide.manyVersion) second.boolValue=EditorGUILayout.Popup("標準表示の2枠目",second.boolValue?1:0,new[]{"今日のランダムワールド②","ランダムチルワールド"})==1;
         EditorGUILayout.PropertyField(Property("portalAnchor"),new GUIContent("ポータル出現位置"));
         EditorGUILayout.PropertyField(Property("anonymousStatistics"), new GUIContent("匿名の操作統計を送る"));
-        EditorGUILayout.PropertyField(Property("statisticsSite"), new GUIContent("統計の設置先コード"));
-        var environment = Property("statisticsEnvironment");
-        string[] environments = { "production", "test", "unknown" };
-        int environmentIndex = System.Array.IndexOf(environments, environment.stringValue);
-        environment.stringValue = environments[EditorGUILayout.Popup("統計の環境", environmentIndex < 0 ? 2 : environmentIndex, new[] { "本番", "テスト", "未分類" })];
-        EditorGUILayout.HelpBox("表示準備完了・ポータル操作受付を送信します。閲覧人数や移動成功数ではありません。個人ID・セッションID・ワールドIDは含めません。設置先コードは英数字・_・-の64文字以内、未設定はunknownです。同じシーンの全ボードで設定を揃えてください。1台でも統計を無効にすると全体の送信を停止します。Editor・ClientSimでは送信しません。短い滞在・通信不調・待ち行列の上限では未送信が生じます。", MessageType.None);
+        EditorGUILayout.HelpBox("表示準備・ポータル操作の匿名統計です。個人IDは送りません。オフにすると同じシーンのGUIDE全体で送信を停止します。", MessageType.None);
         var anchor=Property("portalAnchor").objectReferenceValue as Transform;
         if(anchor!=null && GUILayout.Button("ポータル位置を選択して移動"))
         {Selection.activeGameObject=anchor.gameObject;if(SceneView.lastActiveSceneView!=null)SceneView.lastActiveSceneView.FrameSelected();}
@@ -95,12 +92,6 @@ public class MetaReaWallGuideInspector : Editor
         cooldown.floatValue=EditorGUILayout.Slider("共有待機時間（秒）",cooldown.floatValue,1,30);
         EditorGUILayout.Space();
         EditorGUILayout.HelpBox("画像や情報が表示されない場合は、VRChatの「Allow Untrusted URLs」を有効にしてください。", MessageType.None);
-        if (((MetaReaWallGuide)target).favoritesEnabled)
-        {
-            EditorGUILayout.HelpBox("ワールド登録は子オブジェクト「お気に入りワールド設定」で行います。", MessageType.Info);
-            var settings = ((MetaReaWallGuide)target).favoritesSettings;
-            if (settings != null && GUILayout.Button("お気に入りワールド設定を選択")) Selection.activeGameObject = settings.gameObject;
-        }
         bool settingsChanged = serializedObject.ApplyModifiedProperties();
         if (displayChanged && !EditorApplication.isPlaying) MetaReaUnifiedLayout.Preview(currentGuide);
         if (settingsChanged && !colorsChanged && !EditorApplication.isPlaying) { UdonSharpEditorUtility.CopyProxyToUdon((MetaReaWallGuide)target); EditorUtility.SetDirty(target); }
@@ -112,6 +103,18 @@ public class MetaReaWallGuideInspector : Editor
             EditorUtility.SetDirty(guide);
             if(guide.gameObject.scene.IsValid())UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(guide.gameObject.scene);
         }
+        if (currentGuide.favoritesEnabled)
+        {
+            EditorGUILayout.Space();
+            favoritesOpen = EditorGUILayout.Foldout(favoritesOpen, "お気に入り", true);
+            if (favoritesOpen)
+            {
+                var settings = currentGuide.favoritesSettings;
+                if (settings != null) MetaReaFavoritesSettingsInspector.DrawSettings(settings);
+                else EditorGUILayout.HelpBox("お気に入り設定が見つかりません。導入用プレハブから配置してください。", MessageType.Warning);
+            }
+        }
+
     }
 }
 

@@ -8,7 +8,11 @@ public class MetaReaFavoritesSettingsInspector : Editor
     public override void OnInspectorGUI()
     {
         if (UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target)) return;
-        var settings = (MetaReaFavoritesSettings)target;
+        DrawSettings((MetaReaFavoritesSettings)target);
+    }
+
+    public static void DrawSettings(MetaReaFavoritesSettings settings)
+    {
         if (!MetaReaFavoritesStorage.CanStore(settings))
         {
             EditorGUILayout.HelpBox("シーンに配置したボードの「お気に入りワールド設定」で登録してください。登録データはパッケージの更新対象外に保存されます。", MessageType.Info);
