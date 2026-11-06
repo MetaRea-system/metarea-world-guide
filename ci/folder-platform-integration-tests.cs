@@ -8,7 +8,7 @@ static void S(object x,string n,object v)=>x.GetType().GetField(n,F).SetValue(x,
 static object C(object x,string n,params object[] a){try{return x.GetType().GetMethod(n,F).Invoke(x,a);}catch(TargetInvocationException e){throw e.InnerException;}}
 static List<string> checks=new List<string>(); static List<Texture2D> textures=new List<Texture2D>();
 static string fixture="C:/Users/一生/Documents/Codex/2026-10-12/files-mentioned-by-the-user-codex/patch045-work/fixtures/guide-v4/";
-static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/v0172/integration";
+static string output="C:/Users/一生/Documents/Codex/2026-10-25/t/outputs/v0173/integration";
 static DataDictionary boot,status;static string gen;static int bank;static double now;static Scene scene;
 static void Check(bool b,string n){if(!b)throw new Exception("CHECK FAILED: "+n);checks.Add(n);}
 static DataDictionary D(string json){DataToken t;if(!VRCJson.TryDeserializeFromJson(json,out t))throw new Exception("json");return t.DataDictionary;}
@@ -60,8 +60,9 @@ display.initialDisplayMode=1;C(display,"InitializeDisplayMode");C(display,"Rende
 for(int i=0;i<4;i++){
 var p=display.manyPictures[i].rectTransform;var t=display.manyTitles[i].rectTransform;var summary=display.manySummaries[i].rectTransform;
 Check(Mathf.Abs(p.rect.height-194)<.01f,"four-card photo height "+i);
-Check(display.manyCaptions[i].rectTransform.anchoredPosition.y==-14 && display.manyCaptions[i].fontSize==14,"small caption at upper left "+i);
-Check(!display.manyPhotoGradients[i].gameObject.activeSelf,"caption has no black background "+i);
+Check(display.manyCaptions[i].rectTransform.anchoredPosition.y==-9 && display.manyCaptions[i].fontSize==12,"small caption at upper left "+i);
+Check(display.manyPhotoGradients[i].gameObject.activeSelf && Mathf.Abs(display.manyPhotoGradients[i].color.a-.25f)<.001f,"faint caption background "+i);
+Check(t.anchoredPosition.x==summary.anchoredPosition.x && display.manyTitles[i].fontSize==18,"title aligned with description and smaller font "+i);
 var plate=display.manyTitleBackplates[i];
 Check(plate.gameObject.activeSelf && plate.type==UnityEngine.UI.Image.Type.Sliced && plate.sprite.border.x>0,"rounded title background enabled "+i);
 Check(Mathf.Abs(plate.rectTransform.rect.width-Mathf.Min(348,display.manyTitles[i].preferredWidth+8))<.01f,"title background fits actual text width "+i);

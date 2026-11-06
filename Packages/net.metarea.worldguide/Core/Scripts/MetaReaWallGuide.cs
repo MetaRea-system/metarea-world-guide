@@ -535,26 +535,26 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             float photoHeight = compact ? 194f : 230f;
             Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
             Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
-            Place(manyCaptions[k].rectTransform, compact ? 16 : 10, compact ? 14 : photoHeight + 18, compact ? 340 : 352, compact ? 22 : 28);
+            Place(manyCaptions[k].rectTransform, 10, compact ? 9 : photoHeight + 18, compact ? 340 : 352, compact ? 22 : 28);
             manyCaptions[k].resizeTextForBestFit = false;
-            manyCaptions[k].fontSize = compact ? 14 : 18;
-            Place(manyTitles[k].rectTransform, compact ? 16 : 10, compact ? photoHeight - 22 : photoHeight + 56, compact ? 340 : 352, 30);
+            manyCaptions[k].fontSize = compact ? 12 : 18;
+            Place(manyTitles[k].rectTransform, 10, compact ? photoHeight - 22 : photoHeight + 56, compact ? 340 : 352, 30);
             if (manyPhotoGradients != null && k < manyPhotoGradients.Length && manyPhotoGradients[k] != null)
             {
-                manyPhotoGradients[k].gameObject.SetActive(false);
-                Place(manyPhotoGradients[k].rectTransform,12,photoHeight-46,348,24);
+                manyPhotoGradients[k].gameObject.SetActive(compact);
+                manyPhotoGradients[k].color = new Color(0f,0f,0f,.25f);
             }
             if (manyTitleBackplates != null && k < manyTitleBackplates.Length && manyTitleBackplates[k] != null)
             {
                 manyTitleBackplates[k].gameObject.SetActive(compact);
-                Place(manyTitleBackplates[k].rectTransform,12,photoHeight-22,348,30);
+                Place(manyTitleBackplates[k].rectTransform,6,photoHeight-22,348,30);
             }
             if (manyCaptionShadows != null && k < manyCaptionShadows.Length && manyCaptionShadows[k] != null) manyCaptionShadows[k].enabled = compact;
             if (manyTitleShadows != null && k < manyTitleShadows.Length && manyTitleShadows[k] != null) manyTitleShadows[k].enabled = compact;
-            manyTitles[k].fontSize = 20;
+            manyTitles[k].fontSize = compact ? 18 : 20;
             manyTitles[k].resizeTextForBestFit = false;
-            manyTitles[k].resizeTextMinSize = 20;
-            manyTitles[k].resizeTextMaxSize = compact ? 20 : 24;
+            manyTitles[k].resizeTextMinSize = compact ? 18 : 20;
+            manyTitles[k].resizeTextMaxSize = compact ? 18 : 24;
             Place(manyAuthors[k].rectTransform, 226, height - (compact ? 27 : 29), 136, compact ? 24 : 26);
             if (manyPlatforms != null && k < manyPlatforms.Length && manyPlatforms[k] != null) { Place(manyPlatforms[k].rectTransform, 10, height - (compact ? 27 : 29), 212, compact ? 24 : 26); manyPlatforms[k].text = valid ? Platforms(w) : ""; }
             manyAuthors[k].alignment = compact ? TextAnchor.UpperRight : TextAnchor.MiddleRight;
@@ -575,9 +575,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (compact)
             {
                 if (manyPhotoGradients != null && k < manyPhotoGradients.Length && manyPhotoGradients[k] != null)
-                    Place(manyPhotoGradients[k].rectTransform,12,photoHeight-46,Mathf.Min(348f,manyCaptions[k].preferredWidth+8f),24);
+                    Place(manyPhotoGradients[k].rectTransform,12,12,Mathf.Max(1f,Mathf.Min(336f,manyCaptions[k].preferredWidth-4f)),13);
                 if (manyTitleBackplates != null && k < manyTitleBackplates.Length && manyTitleBackplates[k] != null)
-                    Place(manyTitleBackplates[k].rectTransform,12,photoHeight-22,Mathf.Min(348f,manyTitles[k].preferredWidth+8f),30);
+                    Place(manyTitleBackplates[k].rectTransform,6,photoHeight-22,Mathf.Min(348f,manyTitles[k].preferredWidth+8f),30);
             }
             manyAuthors[k].text = valid ? FitSingleLine(manyAuthors[k], string.IsNullOrEmpty(authors[w]) ? "" : "by " + authors[w], 10+k) : "";
             if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
