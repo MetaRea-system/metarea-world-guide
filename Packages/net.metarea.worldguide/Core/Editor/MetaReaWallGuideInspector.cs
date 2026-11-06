@@ -29,6 +29,7 @@ public class MetaReaWallGuideInspector : Editor
         }
         serializedObject.Update();
         EditorGUILayout.LabelField("MetaRea WORLD GUIDE",EditorStyles.boldLabel);
+        if (GUILayout.Button("ビルド環境を診断")) MetaReaBuildEnvironment.Open();
         var currentGuide = (MetaReaWallGuide)target;
         bool displayChanged = false;
         if (currentGuide.unifiedDisplay)
