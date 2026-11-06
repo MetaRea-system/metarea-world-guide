@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.Linq;
 using UnityEditor;
@@ -19,8 +20,8 @@ public static class MetaReaManyLayout
             var udon = UdonSharpEditorUtility.GetBackingUdonBehaviour(g);
             g.manyVersion = true;
             g.manyButtons = new Button[4]; g.manyPictures = new RawImage[4];
-            g.manyCaptions = new Text[4]; g.manyTitles = new Text[4]; g.manyAuthors = new Text[4];
-            g.manySummaries = new Text[4];
+            g.manyCaptions = new TMP_Text[4]; g.manyTitles = new TMP_Text[4]; g.manyAuthors = new TMP_Text[4];
+            g.manySummaries = new TMP_Text[4];
             for (int i = 0; i < 4; i++)
             {
                 var existing = g.topPanel.transform.Find("Many " + i);
@@ -30,25 +31,25 @@ public static class MetaReaManyLayout
                 g.manyButtons[i].onClick = new Button.ButtonClickedEvent();
                 UnityEventTools.AddStringPersistentListener(g.manyButtons[i].onClick, udon.SendCustomEvent, "_Many" + i);
                 g.manyPictures[i] = card.transform.Find(photo).GetComponent<RawImage>();
-                g.manyCaptions[i] = card.transform.Find(caption).GetComponent<Text>();
-                g.manyTitles[i] = card.transform.Find(title).GetComponent<Text>();
-                g.manyAuthors[i] = card.transform.Find(author).GetComponent<Text>();
-                g.manySummaries[i] = card.transform.Find(summary).GetComponent<Text>();
+                g.manyCaptions[i] = card.transform.Find(caption).GetComponent<TMP_Text>();
+                g.manyTitles[i] = card.transform.Find(title).GetComponent<TMP_Text>();
+                g.manyAuthors[i] = card.transform.Find(author).GetComponent<TMP_Text>();
+                g.manySummaries[i] = card.transform.Find(summary).GetComponent<TMP_Text>();
                 g.manySummaries[i].gameObject.SetActive(true);
                 g.manySummaries[i].fontSize = 16;
-                g.manySummaries[i].resizeTextForBestFit = false;
-                g.manySummaries[i].lineSpacing = 1f;
-                g.manySummaries[i].alignment = TextAnchor.UpperLeft;
-                g.manySummaries[i].horizontalOverflow = HorizontalWrapMode.Wrap;
-                g.manySummaries[i].verticalOverflow = VerticalWrapMode.Truncate;
-                g.manySummaries[i].supportRichText = false;
+                g.manySummaries[i].enableAutoSizing = false;
+                g.manySummaries[i].lineSpacing = 0f;
+                g.manySummaries[i].alignment = TextAlignmentOptions.TopLeft;
+                g.manySummaries[i].enableWordWrapping = true;
+                g.manySummaries[i].overflowMode = TextOverflowModes.Truncate;
+                g.manySummaries[i].richText = false;
                 g.manyCaptions[i].fontSize = 18;
-                g.manyCaptions[i].resizeTextForBestFit = true; g.manyCaptions[i].resizeTextMinSize = 15; g.manyCaptions[i].resizeTextMaxSize = 18;
+                g.manyCaptions[i].enableAutoSizing = true; g.manyCaptions[i].fontSizeMin = 15; g.manyCaptions[i].fontSizeMax = 18;
                 g.manyTitles[i].fontSize = 24;
-                g.manyTitles[i].resizeTextForBestFit = true; g.manyTitles[i].resizeTextMinSize = 19; g.manyTitles[i].resizeTextMaxSize = 24;
-                g.manyTitles[i].horizontalOverflow = HorizontalWrapMode.Wrap;
+                g.manyTitles[i].enableAutoSizing = true; g.manyTitles[i].fontSizeMin = 19; g.manyTitles[i].fontSizeMax = 24;
+                g.manyTitles[i].enableWordWrapping = true;
                 g.manyAuthors[i].fontSize = 16;
-                g.manyAuthors[i].resizeTextForBestFit = true; g.manyAuthors[i].resizeTextMinSize = 13; g.manyAuthors[i].resizeTextMaxSize = 16;
+                g.manyAuthors[i].enableAutoSizing = true; g.manyAuthors[i].fontSizeMin = 13; g.manyAuthors[i].fontSizeMax = 16;
             }
             g.headingTexts = g.headingTexts.Concat(g.manyTitles).Distinct().ToArray();
             g.accentTexts = g.accentTexts.Concat(g.manyCaptions).Distinct().ToArray();
@@ -65,3 +66,4 @@ public static class MetaReaManyLayout
             UdonSharpEditorUtility.CopyProxyToUdon(g);
     }
 }
+

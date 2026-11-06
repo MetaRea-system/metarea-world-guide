@@ -1,3 +1,4 @@
+using TMPro;
 using UdonSharp;
 using UnityEngine;
 using UnityEngine.UI;
@@ -24,7 +25,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public Transform portalAnchor;
     public VRCPortalMarker portalMarker;
     public GameObject editorPortalPreview;
-    public Text portalDestinationLabel;
+    public TMP_Text portalDestinationLabel;
 
     [Header("外部データ配信")]
     public bool onlineMode;
@@ -45,11 +46,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [Header("公式X")]
     public string xProfileUrl = "https://x.com/metametarea";
     public GameObject xUrlPanel;
-    public InputField xUrlField;
+    public TMP_InputField xUrlField;
     [Header("BOOTH")]
     public string boothUrl = "https://metarea.booth.pm/";
     public GameObject boothUrlPanel;
-    public InputField boothUrlField;
+    public TMP_InputField boothUrlField;
     [Min(5f)] public float sponsorRotationSeconds = 10f;
     [Range(.2f, 2f)] public float sponsorFadeSeconds = .8f;
     public TextAsset sampleFeed;
@@ -60,10 +61,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public string[] favoriteWorldAuthors = new string[0];
     [HideInInspector] public GameObject favoritesPanel;
     [HideInInspector] public Button[] favoriteButtons;
-    [HideInInspector] public Text[] favoriteTitles;
-    [HideInInspector] public Text[] favoriteAuthors;
-    [HideInInspector] public Text favoritePageLabel;
-    [HideInInspector] public Text favoriteHelp;
+    [HideInInspector] public TMP_Text[] favoriteTitles;
+    [HideInInspector] public TMP_Text[] favoriteAuthors;
+    [HideInInspector] public TMP_Text favoritePageLabel;
+    [HideInInspector] public TMP_Text favoriteHelp;
     [HideInInspector] public Button favoritePrevious;
     [HideInInspector] public Button favoriteNext;
     private bool favoriteTabSelected;
@@ -75,10 +76,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public string[] favoriteFolderNames = new string[0];
     [HideInInspector] public int[] favoriteFolderIndices = new int[0];
     [HideInInspector] public Button[] favoriteFolderButtons;
-    [HideInInspector] public Text[] favoriteFolderTitles;
-    [HideInInspector] public Text[] favoriteFolderCounts;
+    [HideInInspector] public TMP_Text[] favoriteFolderTitles;
+    [HideInInspector] public TMP_Text[] favoriteFolderCounts;
     [HideInInspector] public Button favoriteBack;
-    [HideInInspector] public Text favoriteSection;
+    [HideInInspector] public TMP_Text favoriteSection;
     private int favoriteFolder = -1;
     private int favoriteFolderPage;
     private int[] favoriteFolderCountsCache;
@@ -88,7 +89,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public Texture unavailablePicture;
     [HideInInspector] public Texture failedPicture;
     [HideInInspector] public RawImage[] loadingTargets;
-    [HideInInspector] public Text[] loadingIndicators;
+    [HideInInspector] public TMP_Text[] loadingIndicators;
     public Texture sampleAdBanner;
     public Texture sampleAdDetail;
     public string[] pictureWorldIds;
@@ -104,11 +105,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public Color selectedTabColor = new Color(.03f,.30f,.47f);
     public Color portalColor = new Color(0,.43f,.66f);
     public Color borderColor = new Color(.11f,.28f,.4f);
-    public Text[] headingTexts;
-    public Text[] bodyTexts;
-    public Text[] secondaryTexts;
-    public Text[] accentTexts;
-    public Text[] buttonTexts;
+    public TMP_Text[] headingTexts;
+    public TMP_Text[] bodyTexts;
+    public TMP_Text[] secondaryTexts;
+    public TMP_Text[] accentTexts;
+    public TMP_Text[] buttonTexts;
     public Image backgroundImage;
     public Image[] cardImages;
     public Image[] portalImages;
@@ -120,55 +121,55 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public GameObject listPanel;
     public GameObject detailPanel;
     public GameObject adPanel;
-    public Text[] topTitles;
-    public Text[] topAuthors;
-    public Text[] topSummaries;
-    public Text[] topCaptions;
+    public TMP_Text[] topTitles;
+    public TMP_Text[] topAuthors;
+    public TMP_Text[] topSummaries;
+    public TMP_Text[] topCaptions;
     public RawImage[] topPictures;
     public Button[] topButtons;
     public GameObject[] rows;
-    public Text[] rowTitles;
-    public Text[] rowSummaries;
+    public TMP_Text[] rowTitles;
+    public TMP_Text[] rowSummaries;
     public RawImage[] rowPictures;
-    public Text sectionLabel;
-    public Text pageLabel;
+    public TMP_Text sectionLabel;
+    public TMP_Text pageLabel;
     public Button previousPage;
     public Button nextPage;
     public Button reshuffleButton;
-    public Text detailTitle;
-    public Text detailAuthor;
-    public Text detailDescription;
-    public Text platformNotice;
+    public TMP_Text detailTitle;
+    public TMP_Text detailAuthor;
+    public TMP_Text detailDescription;
+    public TMP_Text platformNotice;
     public RawImage detailPicture;
     public Button previousWorld;
     public Button nextWorld;
-    public Text returnLabel;
+    public TMP_Text returnLabel;
     public Button portalButton;
-    public Text portalButtonLabel;
-    public Text statusLabel;
+    public TMP_Text portalButtonLabel;
+    public TMP_Text statusLabel;
     public Button retryButton;
     public Image[] navImages;
-    public Text adTitle;
-    public Text adDescription;
-    public Text adSponsor;
+    public TMP_Text adTitle;
+    public TMP_Text adDescription;
+    public TMP_Text adSponsor;
     public RawImage adPicture;
-    public Text adDownloadStatus;
-    public Text adQrStatus;
+    public TMP_Text adDownloadStatus;
+    public TMP_Text adQrStatus;
     public GameObject initialLoadingPanel;
-    public Text initialLoadingLabel;
+    public TMP_Text initialLoadingLabel;
     public CanvasGroup initialTopGroup;
-    public Text bannerTitle;
+    public TMP_Text bannerTitle;
     public RawImage bannerPicture;
     public Button adPortalButton;
-    public Text adPortalLabel;
+    public TMP_Text adPortalLabel;
     public GameObject sponsoredWorldPanel;
     public Button[] sponsoredWorldButtons;
     public RawImage[] sponsoredWorldPictures;
-    public Text[] sponsoredWorldTitles;
+    public TMP_Text[] sponsoredWorldTitles;
     public RawImage sponsorQrPicture;
-    public InputField sponsorUrlField;
+    public TMP_InputField sponsorUrlField;
     public Button sponsorBannerButton;
-    public Text sponsorLinkHelp;
+    public TMP_Text sponsorLinkHelp;
     public GameObject sponsorDisclosure;
     public CanvasGroup sponsorBannerFade;
     public CanvasGroup[] sponsorWorldFades;
@@ -424,7 +425,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public RawImage guideTitleImage;
     [HideInInspector] public string archiveUrl = "https://metarea.net/";
     [HideInInspector] public GameObject archiveUrlPanel;
-    [HideInInspector] public InputField archiveUrlField;
+    [HideInInspector] public TMP_InputField archiveUrlField;
 
     private string appliedSnapshot = "";
     private string appliedPortalId = "";
@@ -438,8 +439,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool[] pc;
     private bool[] android;
     private int[] pcSupport, androidSupport, iosSupport;
-    public Text[] topPlatforms, manyPlatforms, rowPlatforms, rowAuthors;
-    public Text detailPlatforms;
+    public TMP_Text[] topPlatforms, manyPlatforms, rowPlatforms, rowAuthors;
+    public TMP_Text detailPlatforms;
     private int PlatformState(DataDictionary world, string key)
     {
         DataToken value;
@@ -477,8 +478,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     [HideInInspector] public Image[] manyPhotoGradients;
     [HideInInspector] public Image[] manyTitleBackplates;
     [HideInInspector] public Shadow[] manyCaptionShadows, manyTitleShadows;
-    [HideInInspector] public Text[] manyCaptions, manyTitles, manyAuthors;
-    [HideInInspector] public Text[] manySummaries;
+    [HideInInspector] public TMP_Text[] manyCaptions, manyTitles, manyAuthors;
+    [HideInInspector] public TMP_Text[] manySummaries;
     private int[] manyWorlds = new int[4];
     private int selectedManySlot = -1;
 
@@ -534,11 +535,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             float height = compact ? 255f : 387f;
             float photoHeight = compact ? 194f : 230f;
             Place((RectTransform)manyButtons[k].transform, (k % 2) * 388, 44 + (k / 2) * (compact ? 267 : 391), 372, height);
-            Place(manyPictures[k].rectTransform, 8, 8, 356, photoHeight);
-            Place(manyCaptions[k].rectTransform, 10, compact ? 9 : photoHeight + 18, compact ? 340 : 352, compact ? 22 : 28);
-            manyCaptions[k].resizeTextForBestFit = false;
+            Place(((RectTransform)((Component)manyPictures[k]).transform), 8, 8, 356, photoHeight);
+            Place(((RectTransform)((Component)manyCaptions[k]).transform), 10, compact ? 9 : photoHeight + 18, compact ? 340 : 352, compact ? 22 : 28);
+            manyCaptions[k].enableAutoSizing = false;
             manyCaptions[k].fontSize = compact ? 12 : 18;
-            Place(manyTitles[k].rectTransform, 10, compact ? photoHeight - 22 : photoHeight + 56, compact ? 340 : 352, 30);
+            Place(((RectTransform)((Component)manyTitles[k]).transform), 10, compact ? photoHeight - 22 : photoHeight + 56, compact ? 340 : 352, 30);
             if (manyPhotoGradients != null && k < manyPhotoGradients.Length && manyPhotoGradients[k] != null)
             {
                 manyPhotoGradients[k].gameObject.SetActive(compact);
@@ -547,17 +548,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (manyTitleBackplates != null && k < manyTitleBackplates.Length && manyTitleBackplates[k] != null)
             {
                 manyTitleBackplates[k].gameObject.SetActive(compact);
-                Place(manyTitleBackplates[k].rectTransform,6,photoHeight-22,348,30);
+                Place(((RectTransform)((Component)manyTitleBackplates[k]).transform),6,photoHeight-22,348,30);
             }
             if (manyCaptionShadows != null && k < manyCaptionShadows.Length && manyCaptionShadows[k] != null) manyCaptionShadows[k].enabled = compact;
             if (manyTitleShadows != null && k < manyTitleShadows.Length && manyTitleShadows[k] != null) manyTitleShadows[k].enabled = compact;
             manyTitles[k].fontSize = compact ? 18 : 20;
-            manyTitles[k].resizeTextForBestFit = false;
-            manyTitles[k].resizeTextMinSize = compact ? 18 : 20;
-            manyTitles[k].resizeTextMaxSize = compact ? 18 : 24;
-            Place(manyAuthors[k].rectTransform, 226, height - (compact ? 27 : 29), 136, compact ? 24 : 26);
-            if (manyPlatforms != null && k < manyPlatforms.Length && manyPlatforms[k] != null) { Place(manyPlatforms[k].rectTransform, 10, height - (compact ? 27 : 29), 212, compact ? 24 : 26); manyPlatforms[k].text = valid ? Platforms(w) : ""; }
-            manyAuthors[k].alignment = compact ? TextAnchor.UpperRight : TextAnchor.MiddleRight;
+            manyTitles[k].enableAutoSizing = false;
+            manyTitles[k].fontSizeMin = compact ? 18 : 20;
+            manyTitles[k].fontSizeMax = compact ? 18 : 24;
+            Place(((RectTransform)((Component)manyAuthors[k]).transform), 226, height - (compact ? 27 : 29), 136, compact ? 24 : 26);
+            if (manyPlatforms != null && k < manyPlatforms.Length && manyPlatforms[k] != null) { Place(((RectTransform)((Component)manyPlatforms[k]).transform), 10, height - (compact ? 27 : 29), 212, compact ? 24 : 26); manyPlatforms[k].text = valid ? Platforms(w) : ""; }
+            manyAuthors[k].alignment = compact ? TextAlignmentOptions.TopRight : TextAlignmentOptions.Right;
             manyButtons[k].interactable = valid;
             manyCaptions[k].text = k == 0 ? "今日のランダムワールド①" : k == 1 ? "今日のランダムワールド②" : k == 2 ? "紹介最新ワールド" : "おすすめランダムワールド";
             bool waiting = !ready && !failed, loadFailed = !ready && failed;
@@ -575,14 +576,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (compact)
             {
                 if (manyPhotoGradients != null && k < manyPhotoGradients.Length && manyPhotoGradients[k] != null)
-                    Place(manyPhotoGradients[k].rectTransform,12,12,Mathf.Max(1f,Mathf.Min(336f,manyCaptions[k].preferredWidth-4f)),13);
+                    Place(((RectTransform)((Component)manyPhotoGradients[k]).transform),12,12,Mathf.Max(1f,Mathf.Min(336f,LayoutUtility.GetPreferredWidth((RectTransform)((Component)manyCaptions[k]).transform)-4f)),13);
                 if (manyTitleBackplates != null && k < manyTitleBackplates.Length && manyTitleBackplates[k] != null)
-                    Place(manyTitleBackplates[k].rectTransform,6,photoHeight-22,Mathf.Min(348f,manyTitles[k].preferredWidth+8f),30);
+                    Place(((RectTransform)((Component)manyTitleBackplates[k]).transform),6,photoHeight-22,Mathf.Min(348f,LayoutUtility.GetPreferredWidth((RectTransform)((Component)manyTitles[k]).transform)+8f),30);
             }
             manyAuthors[k].text = valid ? FitSingleLine(manyAuthors[k], string.IsNullOrEmpty(authors[w]) ? "" : "by " + authors[w], 10+k) : "";
             if (manySummaries != null && k < manySummaries.Length && manySummaries[k] != null)
             {
-                Place(manySummaries[k].rectTransform,10,photoHeight+(compact ? 10 : 96),352,24);
+                Place(((RectTransform)((Component)manySummaries[k]).transform),10,photoHeight+(compact ? 10 : 96),352,24);
                 manySummaries[k].text = valid ? FitSingleLine(manySummaries[k],TopIntroduction(descriptions[w]),4+k) : "";
             }
             SetPhoto(manyPictures[k], valid ? w : -1);
@@ -739,7 +740,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private float nextImageRequestAt;
     private float imageRequestStarted;
     private bool imageRequestInFlight;
-    private Text reshuffleLabel;
+    private TMP_Text reshuffleLabel;
 
     [HideInInspector] public bool guideV3;
     [HideInInspector] public bool preferGuideV4;
@@ -973,11 +974,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private string v3LatestJson = "";
     [HideInInspector] public GameObject maintenancePanel;
     [HideInInspector] public GameObject maintenanceNotice;
-    [HideInInspector] public Text maintenanceMessage;
-    [HideInInspector] public Text maintenanceHint;
-    [HideInInspector] public Text maintenanceNoticeText;
+    [HideInInspector] public TMP_Text maintenanceMessage;
+    [HideInInspector] public TMP_Text maintenanceHint;
+    [HideInInspector] public TMP_Text maintenanceNoticeText;
     private bool v3Maintenance;
-    private int v3NormalDrawFontSize;
+    private float v3NormalDrawFontSize;
     private const string MaintenanceMessage = "ただいまメンテナンス中です。\n５分程度で終了します。\nしばらくお待ちください。";
 
     private void Start()
@@ -985,7 +986,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         nextStatisticsSend = Time.realtimeSinceStartup + 60f + Random.Range(0f,15f);
         if (isSharedDataSource) { SendCustomEventDelayedSeconds(nameof(_Initialize), 1f); return; }
         if (archiveUrlPanel != null) archiveUrlPanel.SetActive(false);
-        if (reshuffleButton != null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
+        if (reshuffleButton != null) reshuffleLabel = reshuffleButton.GetComponentInChildren<TMP_Text>(true);
         if (xUrlPanel != null) xUrlPanel.SetActive(false);
         if (boothUrlPanel != null) boothUrlPanel.SetActive(false);
         if (favoritesEnabled && favoritesSettings != null)
@@ -1985,7 +1986,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         image.uvRect = new Rect(0, 0, 1, 1);
         if (texture == null) return;
         float sourceAspect = onlineMode ? 256f / 144f : (float)texture.width / texture.height;
-        float slotAspect = image.rectTransform.rect.width / image.rectTransform.rect.height;
+        float slotAspect = ((RectTransform)((Component)image).transform).rect.width / ((RectTransform)((Component)image).transform).rect.height;
         if (slotAspect > sourceAspect)
         { float h = sourceAspect / slotAspect; image.uvRect = new Rect(0, (1 - h) / 2, 1, h); }
         else
@@ -2013,10 +2014,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         image.texture = state == 0 ? loadingPicture : state == 2 ? failedPicture : unavailablePicture;
         image.color = image.texture == null ? (state == 0 ? Color.black : new Color(.04f, .12f, .19f, 1)) : Color.white;
         image.uvRect = new Rect(0, 0, 1, 1);
-        if (image.texture != null && image.rectTransform.rect.height > 0)
+        if (image.texture != null && ((RectTransform)((Component)image).transform).rect.height > 0)
         {
             float source = (float)image.texture.width / image.texture.height;
-            float target = image.rectTransform.rect.width / image.rectTransform.rect.height;
+            float target = ((RectTransform)((Component)image).transform).rect.width / ((RectTransform)((Component)image).transform).rect.height;
             if (target > source) { float h = source / target; image.uvRect = new Rect(0, (1-h)/2, 1, h); }
             else { float w = target / source; image.uvRect = new Rect((1-w)/2, 0, w, 1); }
         }
@@ -2029,7 +2030,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         string dots = frame == 0 ? "●  ○  ○" : frame == 1 ? "○  ●  ○" : "○  ○  ●";
         for (int i = 0; i < loadingTargets.Length && i < loadingIndicators.Length; i++)
         {
-            RawImage target = loadingTargets[i]; Text indicator = loadingIndicators[i];
+            RawImage target = loadingTargets[i]; TMP_Text indicator = loadingIndicators[i];
             if (target == null || indicator == null) continue;
             bool show = loadingPicture != null && target.texture == loadingPicture;
             indicator.enabled = show;
@@ -2285,7 +2286,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int wait = Mathf.Max(0, Mathf.CeilToInt(drawCooldownUntil - Time.realtimeSinceStartup));
         bool busy = sharedDataSource != null ? sharedDataSource.SharedDrawBusy() : pendingDrawTab >= 0;
         reshuffleButton.interactable = ready && !busy && wait == 0;
-        if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
+        if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<TMP_Text>(true);
         if (reshuffleLabel != null) reshuffleLabel.text = busy ? "抽選中…" : wait > 0 ? "あと " + wait + " 秒" : string.IsNullOrEmpty(drawErrors[slot]) ? "再抽選" : "再試行";
         if (pendingDrawTab == tab)
             statusLabel.text = drawReadyToCommit ? "抽選が完了しました。一覧に戻ると切り替わります" : drawLoadingMetadata ? "サイトの全候補から抽選しています…" : "抽選した64件までの写真を読み込んでいます…";
@@ -2358,9 +2359,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (navImages[i] == null) continue;
             navImages[i].gameObject.SetActive(i < count);
             if (i >= count) continue;
-            Place(navImages[i].rectTransform, 20 + i * (width + 5), 156, width, 92);
-            Text label = navImages[i].GetComponentInChildren<Text>(true);
-            if (label != null) Place(label.rectTransform, 0, 0, width, 92);
+            Place(((RectTransform)((Component)navImages[i]).transform), 20 + i * (width + 5), 156, width, 92);
+            TMP_Text label = navImages[i].GetComponentInChildren<TMP_Text>(true);
+            if (label != null) Place(((RectTransform)((Component)label).transform), 0, 0, width, 92);
         }
         if (!favoritesEnabled && favoritesPanel != null) favoritesPanel.SetActive(false);
     }
@@ -2779,7 +2780,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             string fullAuthor = string.IsNullOrEmpty(authors[selected]) ? "" : "by " + authors[selected];
             detailAuthor.text = fullAuthor;
-            if (detailAuthor.preferredWidth > detailAuthor.rectTransform.rect.width - 2f)
+            if (LayoutUtility.GetPreferredWidth((RectTransform)((Component)detailAuthor).transform) > ((RectTransform)((Component)detailAuthor).transform).rect.width - 2f)
             {
                 detailAuthor.text = FitSingleLine(detailAuthor, fullAuthor, 20);
                 detailDescription.text = "作者：" + authors[selected] + "\n\n" + descriptions[selected];
@@ -2862,13 +2863,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         for (int i = 0; i < 2; i++)
         {
             Place((RectTransform)topButtons[i].transform, 0, compact ? 44 + i * 267 : 44 + i * 391, 760, compact ? 255 : 387);
-            Place(topPictures[i].rectTransform, compact ? 8 : 6, compact ? 8 : 6, compact ? 310 : 748, compact ? 174 : 218);
-            Place(topCaptions[i].rectTransform, compact ? 333 : 20, compact ? 15 : 231, compact ? 410 : 720, compact ? 55 : 32);
-            Place(topTitles[i].rectTransform, compact ? 333 : 20, compact ? 80 : 268, compact ? 410 : 704, compact ? 62 : 34);
+            Place(((RectTransform)((Component)topPictures[i]).transform), compact ? 8 : 6, compact ? 8 : 6, compact ? 310 : 748, compact ? 174 : 218);
+            Place(((RectTransform)((Component)topCaptions[i]).transform), compact ? 333 : 20, compact ? 15 : 231, compact ? 410 : 720, compact ? 55 : 32);
+            Place(((RectTransform)((Component)topTitles[i]).transform), compact ? 333 : 20, compact ? 80 : 268, compact ? 410 : 704, compact ? 62 : 34);
             if (topAuthors != null && i < topAuthors.Length && topAuthors[i] != null)
-                Place(topAuthors[i].rectTransform, compact ? 559 : 300, compact ? 147 : 302, compact ? 184 : 424, compact ? 27 : 22);
-            if (topPlatforms != null && i < topPlatforms.Length && topPlatforms[i] != null) Place(topPlatforms[i].rectTransform, compact ? 333 : 20, compact ? 147 : 302, compact ? 222 : 276, compact ? 27 : 22);
-            Place(topSummaries[i].rectTransform, compact ? 12 : 20, compact ? 190 : 322, compact ? 736 : 704, 55);
+                Place(((RectTransform)((Component)topAuthors[i]).transform), compact ? 559 : 300, compact ? 147 : 302, compact ? 184 : 424, compact ? 27 : 22);
+            if (topPlatforms != null && i < topPlatforms.Length && topPlatforms[i] != null) Place(((RectTransform)((Component)topPlatforms[i]).transform), compact ? 333 : 20, compact ? 147 : 302, compact ? 222 : 276, compact ? 27 : 22);
+            Place(((RectTransform)((Component)topSummaries[i]).transform), compact ? 12 : 20, compact ? 190 : 322, compact ? 736 : 704, 55);
         }
     }
 
@@ -2887,11 +2888,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             var archiveCard = archiveUrlPanel.transform.Find("Card");
             archiveCard.GetComponent<Image>().color = backgroundColor;
             archiveCard.GetComponent<Outline>().effectColor = borderColor;
-            archiveCard.Find("X heading").GetComponent<Text>().color = headingColor;
-            archiveCard.Find("X help").GetComponent<Text>().color = secondaryColor;
+            archiveCard.Find("X heading").GetComponent<TMP_Text>().color = headingColor;
+            archiveCard.Find("X help").GetComponent<TMP_Text>().color = secondaryColor;
             archiveCard.Find("Close").GetComponent<Image>().color = cardColor;
-            archiveCard.Find("Close/Label").GetComponent<Text>().color = buttonTextColor;
-            if (archiveUrlField != null) { archiveUrlField.GetComponent<Image>().color = cardColor; archiveUrlField.textComponent.color = bodyColor; }
+            archiveCard.Find("Close/Label").GetComponent<TMP_Text>().color = buttonTextColor;
+            if (archiveUrlField != null) { archiveUrlField.GetComponent<Image>().color = cardColor; archiveUrlField.GetComponentInChildren<TMP_Text>(true).color = bodyColor; }
         }
         if (backgroundImage != null) backgroundImage.color = backgroundColor;
         if (cardImages != null) for (int i = 0; i < cardImages.Length; i++) if (cardImages[i] != null) cardImages[i].color = cardColor;
@@ -2905,15 +2906,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             var card = xUrlPanel.transform.Find("Card");
             card.GetComponent<Image>().color = backgroundColor;
             card.GetComponent<Outline>().effectColor = borderColor;
-            card.Find("X heading").GetComponent<Text>().color = headingColor;
-            card.Find("X help").GetComponent<Text>().color = secondaryColor;
+            card.Find("X heading").GetComponent<TMP_Text>().color = headingColor;
+            card.Find("X help").GetComponent<TMP_Text>().color = secondaryColor;
             card.Find("Close").GetComponent<Image>().color = cardColor;
-            card.Find("Close/Label").GetComponent<Text>().color = buttonTextColor;
-            if (xUrlField != null) { xUrlField.GetComponent<Image>().color = cardColor; xUrlField.textComponent.color = bodyColor; }
+            card.Find("Close/Label").GetComponent<TMP_Text>().color = buttonTextColor;
+            if (xUrlField != null) { xUrlField.GetComponent<Image>().color = cardColor; xUrlField.GetComponentInChildren<TMP_Text>(true).color = bodyColor; }
         }
     }
 
-    private void TintTexts(Text[] group, Color color)
+    private void TintTexts(TMP_Text[] group, Color color)
     { if (group != null) for (int i = 0; i < group.Length; i++) if (group[i] != null) group[i].color = color; }
 
     private void SponsorPhoto(RawImage image, int cell)
@@ -2931,7 +2932,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         // TOP cards already have a 356-wide image area; do not expand them to
         // the 760-wide footer/detail coordinates.
         if (footer || image == adPicture)
-            Place(image.rectTransform, (760f - width) / 2f, footer ? 0 : 23, width, 760f / 6f);
+            Place(((RectTransform)((Component)image).transform), (760f - width) / 2f, footer ? 0 : 23, width, 760f / 6f);
         if (guideV3 && onlineMode) { V3Paint(image,v3BannerImages[ad],v3BaseBank,v3BaseGeneration,false); return; }
         if (!bannerAtlasV2) { SponsorPhoto(image, adCells[ad]); return; }
         image.texture = adCells[ad] >= 0 ? (adBannerPages[ad] == 0 ? sponsorTexture : extraSponsorTextures[0]) : null;
@@ -2971,7 +2972,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             if (v4Layout) detailHeight = 500f;
             float width = detailHeight*672f/567f;
-            Place(adPicture.rectTransform,(760f-width)*.5f,v4Layout ? 70 : 23,width,detailHeight);
+            Place(((RectTransform)((Component)adPicture).transform),(760f-width)*.5f,v4Layout ? 70 : 23,width,detailHeight);
             DataDictionary image = v3DetailImages[ad];
             if (v4Layout && !V4Loaded(image) && V4Loaded(v4PreviewImages[ad])) image = v4PreviewImages[ad];
             V3Paint(adPicture,image,v3BaseBank,v3BaseGeneration,false); return;
@@ -2980,7 +2981,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (cell >= 0 && cell < 16 && extraSponsorTextures[1 + cell / detailCellsPerPage] != null)
         {
             float detailWidth = detailHeight * 1024f / 864f;
-            Place(adPicture.rectTransform, (760f - detailWidth) * .5f, 23, detailWidth, detailHeight);
+            Place(((RectTransform)((Component)adPicture).transform), (760f - detailWidth) * .5f, 23, detailWidth, detailHeight);
             adPicture.texture = extraSponsorTextures[1 + cell / detailCellsPerPage]; adPicture.color = Color.white;
             int local = cell % detailCellsPerPage;
             if (detailAtlasV2)
@@ -2989,39 +2990,44 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         float placeholderWidth = detailHeight * 1024f / 864f;
-        Place(adPicture.rectTransform, (760f - placeholderWidth) * .5f, 23, placeholderWidth, detailHeight);
+        Place(((RectTransform)((Component)adPicture).transform), (760f - placeholderWidth) * .5f, 23, placeholderWidth, detailHeight);
         SetPlaceholder(adPicture, cell < 0 || cell >= 16 ? 1 : extraSponsorFailed[1 + cell / detailCellsPerPage] ? 2 : 0);
     }
 
     // Independent caches for titles, summaries and author labels.
-    private Text[] fittedLabels = new Text[21];
+    private TMP_Text[] fittedLabels = new TMP_Text[21];
     private string[] fittedInputs = new string[21];
     private string[] fittedOutputs = new string[21];
     private UnityEngine.Object[] fittedFonts = new UnityEngine.Object[21];
-    private int[] fittedSizes = new int[21];
-    private int[] fittedStyles = new int[21];
+    private float[] fittedSizes = new float[21];
+    private float[] fittedMeasuredWidths = new float[21];
     private float[] fittedWidths = new float[21];
 
-    private string FitSingleLine(Text label, string value, int slot)
+    private string FitSingleLine(TMP_Text label, string value, int slot)
     {
         if (label == null) return "";
         string text = string.IsNullOrEmpty(value) ? "" : value.Replace("\r", " ").Replace("\n", " ").Replace("\t", " ");
-        // Measurement and rendering use the same fixed-size, plain-text UI label.
-        label.resizeTextForBestFit = false;
-        label.supportRichText = false;
-        float width = Mathf.Max(0f, label.rectTransform.rect.width - 2f);
+        // Measure through ILayoutElement using the TMP font and client fallback glyphs.
+        // Overflow avoids vertical clipping in the existing compact Japanese labels.
+        label.enableAutoSizing = false;
+        label.richText = false;
+        label.enableWordWrapping = false;
+        label.overflowMode = TextOverflowModes.Overflow;
+        label.text = text;
+        float measuredWidth = LayoutUtility.GetPreferredWidth((RectTransform)((Component)label).transform);
+        float width = Mathf.Max(0f, ((RectTransform)((Component)label).transform).rect.width - 2f);
         if (fittedLabels[slot] == label && fittedInputs[slot] == text &&
-            fittedFonts[slot] == label.font && fittedSizes[slot] == label.fontSize &&
-            fittedStyles[slot] == (int)label.fontStyle && fittedWidths[slot] == width)
-            return fittedOutputs[slot];
+            fittedFonts[slot] == label.fontSharedMaterial && fittedSizes[slot] == label.fontSize &&
+            fittedMeasuredWidths[slot] == measuredWidth && fittedWidths[slot] == width)
+        { label.text = fittedOutputs[slot]; return fittedOutputs[slot]; }
 
         label.text = text;
         string result = text;
-        if (text.Length > 0 && label.preferredWidth > width)
+        if (text.Length > 0 && LayoutUtility.GetPreferredWidth((RectTransform)((Component)label).transform) > width)
         {
             label.text = "…";
             result = "";
-            if (label.preferredWidth <= width)
+            if (LayoutUtility.GetPreferredWidth((RectTransform)((Component)label).transform) <= width)
             {
                 int low = 0, high = text.Length - 1, best = 0;
                 while (low <= high)
@@ -3029,7 +3035,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                     int middle = low + (high - low) / 2;
                     int end = SafeLineBoundary(text, middle);
                     label.text = text.Substring(0, end) + "…";
-                    if (label.preferredWidth <= width) { best = end; low = middle + 1; }
+                    if (LayoutUtility.GetPreferredWidth((RectTransform)((Component)label).transform) <= width) { best = end; low = middle + 1; }
                     else high = middle - 1;
                 }
                 result = text.Substring(0, best) + "…";
@@ -3040,9 +3046,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         fittedLabels[slot] = label;
         fittedInputs[slot] = text;
         fittedOutputs[slot] = result;
-        fittedFonts[slot] = label.font;
+        fittedFonts[slot] = label.fontSharedMaterial;
         fittedSizes[slot] = label.fontSize;
-        fittedStyles[slot] = (int)label.fontStyle;
+        fittedMeasuredWidths[slot] = measuredWidth;
         fittedWidths[slot] = width;
         return result;
     }
@@ -3077,29 +3083,29 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 if (world >= 0)
                 {
                     RawImage photo = sponsoredWorldPictures[s];
-                    Text cardTitle = sponsoredWorldTitles[s];
-                    Place(cardTitle.rectTransform,10,v4Layout ? 214 : 150,352,v4Layout ? 30 : 92);
+                    TMP_Text cardTitle = sponsoredWorldTitles[s];
+                    Place(((RectTransform)((Component)cardTitle).transform),10,v4Layout ? 214 : 150,352,v4Layout ? 30 : 92);
                     cardTitle.fontSize = v4Layout ? 20 : 24;
-                    cardTitle.resizeTextForBestFit = !v4Layout;
-                    cardTitle.horizontalOverflow = HorizontalWrapMode.Wrap;
-                    cardTitle.verticalOverflow = VerticalWrapMode.Truncate;
+                    cardTitle.enableAutoSizing = !v4Layout;
+                    cardTitle.enableWordWrapping = true;
+                    cardTitle.overflowMode = TextOverflowModes.Truncate;
                     if (topPlacementProtocol)
                     {
                         sponsoredWorldButtons[s].interactable = IsTopActive(world);
                         sponsoredWorldTitles[s].text = v4Layout ? FitSingleLine(cardTitle,topAdTitles[world],8+s) : topAdTitles[world];
                         if (guideV3 && onlineMode && topAds[world] >= 0 && v3TopImages[topAds[world]] != null)
-                        { Place(photo.rectTransform,8,8,356,v4Layout ? 200.25f : 133); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
+                        { Place(((RectTransform)((Component)photo).transform),8,8,356,v4Layout ? 200.25f : 133); V3Paint(photo,v3TopImages[topAds[world]],v3BaseBank,v3BaseGeneration,false); }
                         else if (!guideV3 && topImageIndices[world] >= 0)
                         {
                             int cell = topImageIndices[world]; int slot = 5 + cell / 8;
-                            Place(photo.rectTransform,8,8,356,133);
+                            Place(((RectTransform)((Component)photo).transform),8,8,356,133);
                             if (extraSponsorTextures[slot] == null) SetPlaceholder(photo, extraSponsorFailed[slot] ? 2 : 0);
                             else { photo.texture = extraSponsorTextures[slot]; photo.color = Color.white; photo.uvRect = new Rect((cell % 2) * .5f, 1f - (cell % 8 / 2 + 1) * .25f, .5f, .25f); }
                         }
-                        else if (topTypes[world] == 0) { Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,topWorlds[world]); }
-                        else { Place(photo.rectTransform,8,8+(133f-356f/6f)*.5f,356,356f/6f); SponsorBanner(photo,topAds[world]); }
+                        else if (topTypes[world] == 0) { Place(((RectTransform)((Component)photo).transform),8,8,356,133); SetPhoto(photo,topWorlds[world]); }
+                        else { Place(((RectTransform)((Component)photo).transform),8,8+(133f-356f/6f)*.5f,356,356f/6f); SponsorBanner(photo,topAds[world]); }
                     }
-                    else { sponsoredWorldTitles[s].text = titles[world]; Place(photo.rectTransform,8,8,356,133); SetPhoto(photo,world); }
+                    else { sponsoredWorldTitles[s].text = titles[world]; Place(((RectTransform)((Component)photo).transform),8,8,356,133); SetPhoto(photo,world); }
                 }
             }
         }
@@ -3119,13 +3125,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         SponsorDetail(a);
         bool premium = view == 3 && TopPortalAvailable();
         float linkY = v4Layout ? 675f : premium ? 600f : 675f;
-        if (sponsorQrPicture != null) Place(sponsorQrPicture.rectTransform,664,linkY,96,96);
+        if (sponsorQrPicture != null) Place(((RectTransform)((Component)sponsorQrPicture).transform),664,linkY,96,96);
         if (sponsorUrlField != null) Place((RectTransform)sponsorUrlField.transform,0,linkY,650,96);
-        if (sponsorLinkHelp != null) Place(sponsorLinkHelp.rectTransform,10,linkY+66,630,25);
+        if (sponsorLinkHelp != null) Place(((RectTransform)((Component)sponsorLinkHelp).transform),10,linkY+66,630,25);
         Place((RectTransform)adPortalButton.transform,v4Layout ? 388 : 130,v4Layout ? 788 : 711,v4Layout ? 372 : 500,v4Layout ? 35 : 62);
         Transform back = adPanel.transform.Find("Ad back");
-        if (back != null) { float backWidth = v4Layout && premium ? 372 : 760; Place((RectTransform)back,0,788,backWidth,35); Text backText = back.GetComponentInChildren<Text>(); if (backText != null) Place(backText.rectTransform,0,0,backWidth,35); }
-        if (v4Layout) { Place(adPortalLabel.rectTransform,0,0,372,35); adPortalLabel.fontSize = 20; }
+        if (back != null) { float backWidth = v4Layout && premium ? 372 : 760; Place((RectTransform)back,0,788,backWidth,35); TMP_Text backText = back.GetComponentInChildren<TMP_Text>(); if (backText != null) Place(((RectTransform)((Component)backText).transform),0,0,backWidth,35); }
+        if (v4Layout) { Place(((RectTransform)((Component)adPortalLabel).transform),0,0,372,35); adPortalLabel.fontSize = 20; }
         if (sponsorQrPicture != null) { sponsorQrPicture.gameObject.SetActive(true); SponsorQr(a); }
         if (sponsorUrlField != null) { sponsorUrlField.gameObject.SetActive(true); sponsorUrlField.text = adUrls[a]; }
         adPortalButton.gameObject.SetActive(premium);
@@ -3133,8 +3139,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             adTitle.gameObject.SetActive(true); adDescription.gameObject.SetActive(true);
             adSponsor.gameObject.SetActive(false);
-            Place(adTitle.rectTransform,10,5,740,55);
-            Place(adDescription.rectTransform,10,605,740,60);
+            Place(((RectTransform)((Component)adTitle).transform),10,5,740,55);
+            Place(((RectTransform)((Component)adDescription).transform),10,605,740,60);
         }
     }
 
@@ -3706,7 +3712,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             DataDictionary r = V3Object(reference,"rect");
             float aspect = (float)Integer(r,"width",1)/Integer(r,"height",1);
-            float target = image.rectTransform.rect.width/Mathf.Max(1,image.rectTransform.rect.height);
+            float target = ((RectTransform)((Component)image).transform).rect.width/Mathf.Max(1,((RectTransform)((Component)image).transform).rect.height);
             if (target > aspect) { float h = aspect/target; uv = new Rect(uv.x,uv.y+uv.height*(1-h)/2,uv.width,uv.height*h); }
             else { float w = target/aspect; uv = new Rect(uv.x+uv.width*(1-w)/2,uv.y,uv.width*w,uv.height); }
         }
@@ -4636,7 +4642,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (source.v3Maintenance)
         {
             reshuffleButton.interactable = false;
-            if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
+            if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<TMP_Text>(true);
             if (reshuffleLabel != null)
             {
                 if (v3NormalDrawFontSize == 0) v3NormalDrawFontSize = reshuffleLabel.fontSize;
@@ -4651,7 +4657,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int wait = Mathf.CeilToInt(Mathf.Max(source.SharedRemaining(source.sharedDrawCooldownEnd),retryAt-Time.realtimeSinceStartup));
         bool busy = source.SharedDrawBusy() || source.V3SelectionPending(0) || source.V3SelectionPending(1);
         reshuffleButton.interactable = ready && !busy && wait == 0;
-        if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<Text>(true);
+        if (reshuffleLabel == null) reshuffleLabel = reshuffleButton.GetComponentInChildren<TMP_Text>(true);
         if (reshuffleLabel != null && v3NormalDrawFontSize > 0) reshuffleLabel.fontSize = v3NormalDrawFontSize;
         if (reshuffleLabel != null) reshuffleLabel.text = busy ? "抽選中…" : wait > 0 ? "あと " + wait + " 秒" : "再抽選";
         if (statusLabel != null)
@@ -4848,3 +4854,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
 }
+
+
+
+

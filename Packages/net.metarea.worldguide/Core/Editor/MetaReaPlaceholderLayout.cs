@@ -1,3 +1,4 @@
+using TMPro;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -22,27 +23,27 @@ public static class MetaReaPlaceholderLayout
         if (g.manyPictures != null) photos.AddRange(g.manyPictures);
         if (g.sponsoredWorldPictures != null) photos.AddRange(g.sponsoredWorldPictures);
         photos.RemoveAll(p => p == null);
-        var indicators = new List<Text>();
+        var indicators = new List<TMP_Text>();
         foreach (var photo in photos)
         {
             var child = photo.transform.Find("Loading indicator");
             if (child == null)
             {
-                var go = new GameObject("Loading indicator", typeof(RectTransform), typeof(Text));
+                var go = new GameObject("Loading indicator", typeof(RectTransform), typeof(TMP_Text));
                 go.transform.SetParent(photo.transform, false);
                 go.layer = photo.gameObject.layer;
                 child = go.transform;
             }
-            var text = child.GetComponent<Text>();
+            var text = child.GetComponent<TMP_Text>();
             var rect = text.rectTransform;
             rect.anchorMin = new Vector2(.2f, .16f); rect.anchorMax = new Vector2(.8f, .30f);
             rect.offsetMin = rect.offsetMax = Vector2.zero;
             text.font = g.topTitles[0].font;
-            text.fontSize = 18; text.resizeTextForBestFit = true;
-            text.resizeTextMinSize = 8; text.resizeTextMaxSize = 18;
-            text.alignment = TextAnchor.MiddleCenter;
+            text.fontSize = 18; text.enableAutoSizing = true;
+            text.fontSizeMin = 8; text.fontSizeMax = 18;
+            text.alignment = TextAlignmentOptions.Center;
             text.color = new Color(.35f, .85f, 1f);
-            text.raycastTarget = false; text.supportRichText = false;
+            text.raycastTarget = false; text.richText = false;
             text.text = "●  ○  ○"; text.enabled = false;
             indicators.Add(text);
         }
@@ -78,7 +79,7 @@ public static class MetaReaPlaceholderLayout
                 g.manyCaptions[i].text = captions[i];
             }
         }
-        foreach (var label in g.GetComponentsInChildren<Text>(true))
+        foreach (var label in g.GetComponentsInChildren<TMP_Text>(true))
             if (label.text == "ランダム\n全てから") label.text = "ランダム\nワールド";
         g.statusLabel.text = "ワールドをアップロードすると表示されます";
         EditorUtility.SetDirty(g);
@@ -96,3 +97,4 @@ public static class MetaReaPlaceholderLayout
         else { float w = target / source; image.uvRect = new Rect((1-w)/2, 0, w, 1); }
     }
 }
+

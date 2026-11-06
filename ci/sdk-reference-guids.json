@@ -15,5 +15,9 @@
   "dc42784cf147c0c48a680349fa168899": "Packages/com.unity.ugui/Runtime/UI/Core/GraphicRaycaster.cs",
   "e19747de3f5aca642ab2be37e372fb86": "Packages/com.unity.ugui/Runtime/UI/Core/VertexModifiers/Outline.cs",
   "fe87c0e1cc204ed48ad3b37840f39efc": "Packages/com.unity.ugui/Runtime/UI/Core/Image.cs",
-  "cfabb0440166ab443bba8876756fdfa9": "Packages/com.unity.ugui/Runtime/UI/Core/VertexModifiers/Shadow.cs"
+  "cfabb0440166ab443bba8876756fdfa9": "Packages/com.unity.ugui/Runtime/UI/Core/VertexModifiers/Shadow.cs",
+  "f4688fdb7df04437aeb418b961361dc5": "Packages/com.unity.textmeshpro/Scripts/Runtime/TextMeshProUGUI.cs",
+  "71c1514a6bd24e1e882cebbe1904ce04": "Packages/com.unity.textmeshpro/Scripts/Runtime/TMP_FontAsset.cs",
+  "2da0c512f12947e489f739169773d7ca": "Packages/com.unity.textmeshpro/Scripts/Runtime/TMP_InputField.cs",
+  "2705215ac5b84b70bacc50632be6e391": "Packages/com.unity.textmeshpro/Scripts/Runtime/TMP_Settings.cs"
 }

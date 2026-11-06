@@ -1,3 +1,4 @@
+using TMPro;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -31,15 +32,15 @@ public static class MetaReaPresentationLayout
         var canvas = g.topPanel.GetComponentInParent<Canvas>();
         foreach (string name in new[] { "AccentLeft", "AccentRight" })
         { var t = canvas.transform.Find(name); if (t != null) Undo.DestroyObjectImmediate(t.gameObject); }
-        var brand = canvas.transform.Find("Brand").GetComponent<Text>();
-        var heading = canvas.transform.Find("Title").GetComponent<Text>();
+        var brand = canvas.transform.Find("Brand").GetComponent<TMP_Text>();
+        var heading = canvas.transform.Find("Title").GetComponent<TMP_Text>();
         brand.text = "MetaRea"; heading.text = "WORLD GUIDE";
         foreach (var t in new[] { brand, heading })
         {
-            t.fontSize = 52; t.resizeTextForBestFit = false;
-            t.alignment = TextAnchor.MiddleLeft;
-            t.horizontalOverflow = HorizontalWrapMode.Overflow;
-            t.verticalOverflow = VerticalWrapMode.Overflow;
+            t.fontSize = 52; t.enableAutoSizing = false;
+            t.alignment = TextAlignmentOptions.Left;
+            t.enableWordWrapping = false;
+            t.overflowMode = TextOverflowModes.Overflow;
         }
         float brandWidth = brand.preferredWidth, headingWidth = heading.preferredWidth;
         float headerX = (800f - brandWidth - headingWidth - 14f) * .5f;
@@ -47,19 +48,19 @@ public static class MetaReaPresentationLayout
         Place(heading.rectTransform, headerX + brandWidth + 14, 22, headingWidth + 2, 80);
         foreach (var button in new[] { g.previousPage, g.nextPage })
         {
-            var label = button.GetComponentInChildren<Text>(true);
+            var label = button.GetComponentInChildren<TMP_Text>(true);
             label.text = button == g.previousPage ? "＜" : "＞";
-            label.fontSize = 40; label.fontStyle = FontStyle.Bold;
-            label.resizeTextForBestFit = false; label.alignment = TextAnchor.MiddleCenter;
-            label.horizontalOverflow = HorizontalWrapMode.Overflow;
-            label.verticalOverflow = VerticalWrapMode.Overflow;
+            label.fontSize = 40; label.fontStyle = FontStyles.Bold;
+            label.enableAutoSizing = false; label.alignment = TextAlignmentOptions.Center;
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Overflow;
             Place(label.rectTransform, 0, 0, 78, 54);
         }
         Place((RectTransform)g.previousPage.transform, 0, 0, 78, 54);
         Place((RectTransform)g.nextPage.transform, 682, 0, 78, 54);
         Place(g.pageLabel.rectTransform, 280, 0, 200, 54);
         Place(g.sectionLabel.rectTransform, 94, 0, 175, 54);
-        g.sectionLabel.fontSize = 16; g.sectionLabel.alignment = TextAnchor.MiddleLeft;
+        g.sectionLabel.fontSize = 16; g.sectionLabel.alignment = TextAlignmentOptions.Left;
         Place((RectTransform)g.reshuffleButton.transform, 520, 2, 144, 50);
         for (int i = 0; i < g.rows.Length; i++)
         {
@@ -72,28 +73,28 @@ public static class MetaReaPresentationLayout
         if (titleClip.GetComponent<RectMask2D>() == null) titleClip.gameObject.AddComponent<RectMask2D>();
         g.detailTitle.transform.SetParent(titleClip, false);
         Place(g.detailTitle.rectTransform, 0, 0, 736, 48);
-        g.detailTitle.alignment = TextAnchor.MiddleLeft;
-        g.detailTitle.resizeTextForBestFit = false; g.detailTitle.fontSize = 30;
-        g.detailTitle.horizontalOverflow = HorizontalWrapMode.Overflow;
-        g.detailTitle.verticalOverflow = VerticalWrapMode.Truncate;
+        g.detailTitle.alignment = TextAlignmentOptions.Left;
+        g.detailTitle.enableAutoSizing = false; g.detailTitle.fontSize = 30;
+        g.detailTitle.enableWordWrapping = false;
+        g.detailTitle.overflowMode = TextOverflowModes.Truncate;
         g.detailAuthor = Label(g.detailPanel.transform, "Author", g.detailTitle.font, 12, 482, 736, 28, 19);
-        g.detailAuthor.alignment = TextAnchor.MiddleRight;
+        g.detailAuthor.alignment = TextAlignmentOptions.Right;
         var viewport = (RectTransform)g.detailDescription.transform.parent;
         Place(viewport, 12, 515, 736, 130);
         Place(g.detailDescription.rectTransform, 0, 0, 736, 130);
-        g.detailDescription.alignment = TextAnchor.UpperLeft;
-        g.detailDescription.lineSpacing = 1f;
+        g.detailDescription.alignment = TextAlignmentOptions.TopLeft;
+        g.detailDescription.lineSpacing = 0f;
         g.detailDescription.fontSize = 23;
-        g.topAuthors = new Text[2];
+        g.topAuthors = new TMP_Text[2];
         for (int i = 0; i < 2; i++)
         {
             g.topAuthors[i] = Label(g.topButtons[i].transform, "Author", g.detailTitle.font, 20, 302, 704, 22, 19);
-            g.topAuthors[i].alignment = TextAnchor.MiddleRight;
+            g.topAuthors[i].alignment = TextAlignmentOptions.Right;
             // Runtime switches between full and compact cards; this is the unloaded preview.
             Place(g.topTitles[i].rectTransform, 20, 268, 704, 34);
         }
         g.backgroundImage = canvas.GetComponent<Image>();
-        var all = g.GetComponentsInChildren<Text>(true);
+        var all = g.GetComponentsInChildren<TMP_Text>(true);
         g.bodyTexts = all.Where(t => t.name == "Summary" || t == g.detailDescription || t == g.adDescription).ToArray();
         g.headingTexts = all.Where(t => t.name == "Name" || t == g.detailTitle || t == g.adTitle || t == g.portalDestinationLabel || t.transform == canvas.transform.Find("Title")).ToArray();
         g.accentTexts = all.Where(t => t.name == "Caption" || t.name == "Arrow" || t.transform == canvas.transform.Find("Brand")).ToArray();
@@ -127,13 +128,14 @@ public static class MetaReaPresentationLayout
         var r=t==null?new GameObject(name,typeof(RectTransform)).GetComponent<RectTransform>():(RectTransform)t;
         r.SetParent(parent,false);r.gameObject.layer=0;Place(r,x,y,w,h);return r;
     }
-    static Text Label(Transform parent,string name,Font font,float x,float y,float w,float h,int size)
+    static TMP_Text Label(Transform parent,string name,TMP_FontAsset font,float x,float y,float w,float h,int size)
     {
-        var r=Rect(parent,name,x,y,w,h);var t=r.GetComponent<Text>();if(t==null)t=r.gameObject.AddComponent<Text>();
-        t.font=font;t.fontSize=size;t.text="";t.raycastTarget=false;t.supportRichText=false;
-        t.horizontalOverflow=HorizontalWrapMode.Wrap;t.verticalOverflow=VerticalWrapMode.Truncate;
+        var r=Rect(parent,name,x,y,w,h);var t=r.GetComponent<TMP_Text>();if(t==null)t=r.gameObject.AddComponent<TextMeshProUGUI>();
+        t.font=font;t.fontSize=size;t.text="";t.raycastTarget=false;t.richText=false;
+        t.enableWordWrapping = true;t.overflowMode = TextOverflowModes.Truncate;
         return t;
     }
 }
+
 
 

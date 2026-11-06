@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -17,12 +18,12 @@ public static class MetaReaMaintenanceLayout
         r.anchoredPosition = new Vector2(x,-y); r.sizeDelta = new Vector2(w,h);
         return r;
     }
-    static Text Label(Transform parent,string name,float x,float y,float w,float h,int size,Font font,Color color,string value)
+    static TMP_Text Label(Transform parent,string name,float x,float y,float w,float h,int size,TMP_FontAsset font,Color color,string value)
     {
-        var r=Rect(parent,name,x,y,w,h);var t=r.GetComponent<Text>();if(t==null)t=r.gameObject.AddComponent<Text>();
-        t.font=font;t.fontSize=size;t.alignment=TextAnchor.MiddleCenter;t.color=color;t.text=value;
-        t.supportRichText=false;t.raycastTarget=false;t.horizontalOverflow=HorizontalWrapMode.Wrap;t.verticalOverflow=VerticalWrapMode.Truncate;
-        t.resizeTextForBestFit=false;return t;
+        var r=Rect(parent,name,x,y,w,h);var t=r.GetComponent<TMP_Text>();if(t==null)t=r.gameObject.AddComponent<TextMeshProUGUI>();
+        t.font=font;t.fontSize=size;t.alignment=TextAlignmentOptions.Center;t.color=color;t.text=value;
+        t.richText=false;t.raycastTarget=false;t.enableWordWrapping = true;t.overflowMode = TextOverflowModes.Truncate;
+        t.enableAutoSizing=false;return t;
     }
     static Image Background(RectTransform rect,Color color,Color border)
     {
@@ -40,16 +41,17 @@ public static class MetaReaMaintenanceLayout
         Background(full,g.backgroundColor,g.borderColor);
         var font=g.topTitles[0].font;
         g.maintenanceMessage=Label(full,"Message",30,height*.27f,content.rect.width-60,height*.30f,34,font,g.headingColor,"ただいまメンテナンス中です。\n５分程度で終了します。\nしばらくお待ちください。");
-        g.maintenanceMessage.lineSpacing=1.5f;
+        g.maintenanceMessage.lineSpacing=12f;
         g.maintenanceHint=Label(full,"Help",35,height*.64f,content.rect.width-70,100,22,font,g.secondaryColor,"お気に入りワールドは引き続き利用できます。\n終了後、自動で読み込みを再開します。");
         var line=Rect(full,"Divider",80,height*.61f,content.rect.width-160,1);var stroke=line.GetComponent<Image>();if(stroke==null)stroke=line.gameObject.AddComponent<Image>();stroke.color=g.borderColor;stroke.raycastTarget=false;
         var notice=Rect(canvas,"Maintenance notice",banner.anchoredPosition.x,-banner.anchoredPosition.y,banner.rect.width,banner.rect.height);
         Background(notice,g.cardColor,g.borderColor);
         g.maintenanceNoticeText=Label(notice,"Message",16,8,banner.rect.width-32,banner.rect.height-16,22,font,g.bodyColor,g.maintenanceMessage.text);
-        g.maintenanceNoticeText.lineSpacing=1.1f;
+        g.maintenanceNoticeText.lineSpacing=2f;
         g.maintenancePanel=full.gameObject;g.maintenanceNotice=notice.gameObject;
         full.SetAsLastSibling();notice.SetAsLastSibling();
         full.gameObject.SetActive(false);notice.gameObject.SetActive(false);
         EditorUtility.SetDirty(g);
     }
 }
+

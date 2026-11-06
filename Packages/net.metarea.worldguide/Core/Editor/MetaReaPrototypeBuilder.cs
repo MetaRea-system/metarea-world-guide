@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.IO;
 using System.Linq;
@@ -17,7 +18,7 @@ public static class MetaReaPrototypeBuilder
 {
     public const string Root = "Packages/net.metarea.worldguide/Core";
     public const string ScenePath = "Assets/MetaRea_World_GUIDE/UserContent/Scenes/MetaReaPrototype.unity";
-    static Font font;
+    static TMP_FontAsset font;
     static MetaReaWallGuide guide;
     static UdonBehaviour udon;
     static Color Ink = new Color(.88f,.94f,1f);
@@ -43,7 +44,7 @@ public static class MetaReaPrototypeBuilder
         if(program==null){program=ScriptableObject.CreateInstance<UdonSharpProgramAsset>();program.sourceCsScript=AssetDatabase.LoadAssetAtPath<MonoScript>(Root+"/Scripts/MetaReaWallGuide.cs");AssetDatabase.CreateAsset(program,Root+"/Scripts/MetaReaWallGuide.asset");AssetDatabase.SaveAssets();}
         UdonSharpProgramAsset.CompileAllCsPrograms(true);
         if (UdonSharpProgramAsset.AnyUdonSharpScriptHasError()) throw new Exception("Resolve Udon compile errors before creating the scene.");
-        font=AssetDatabase.LoadAssetAtPath<Font>(Root+"/Fonts/NotoSansCJKjp-Regular.otf");
+        font=AssetDatabase.LoadAssetAtPath<TMP_FontAsset>(Root+"/Fonts/MetaRea UI SDF.asset");
         if(font==null)throw new Exception("Japanese font is missing.");
         var root=new GameObject("MetaRea Wall Guide");
         root.transform.position=new Vector3(0,0,1.6f);
@@ -74,11 +75,11 @@ public static class MetaReaPrototypeBuilder
         var cr=canvasObject.GetComponent<RectTransform>();cr.SetParent(root.transform,false);cr.pivot=new Vector2(.5f,0);cr.sizeDelta=new Vector2(800,1350);cr.localScale=Vector3.one*.000925f;cr.localPosition=new Vector3(0,.15f,-.01f);
         var col=canvasObject.GetComponent<BoxCollider>();col.size=new Vector3(800,1350,8);col.center=new Vector3(0,675,0);
         var bg=canvasObject.AddComponent<Image>();bg.color=Navy;
-        Label(cr,"Brand","MetaRea",0,5,800,52,32,Cyan,TextAnchor.MiddleCenter);
-        Label(cr,"Title","WORLD GUIDE",0,52,800,62,40,Ink,TextAnchor.MiddleCenter);
-        Label(cr,"Tagline","Discover Worlds Worth Visiting.",0,111,800,29,18,Muted,TextAnchor.MiddleCenter);
-        Label(cr,"AccentLeft","◇",20,24,60,70,45,Cyan,TextAnchor.MiddleCenter);
-        Label(cr,"AccentRight","◇",720,24,60,70,45,Cyan,TextAnchor.MiddleCenter);
+        Label(cr,"Brand","MetaRea",0,5,800,52,32,Cyan,TextAlignmentOptions.Center);
+        Label(cr,"Title","WORLD GUIDE",0,52,800,62,40,Ink,TextAlignmentOptions.Center);
+        Label(cr,"Tagline","Discover Worlds Worth Visiting.",0,111,800,29,18,Muted,TextAlignmentOptions.Center);
+        Label(cr,"AccentLeft","◇",20,24,60,70,45,Cyan,TextAlignmentOptions.Center);
+        Label(cr,"AccentRight","◇",720,24,60,70,45,Cyan,TextAlignmentOptions.Center);
         string[] navNames={"TOP\nトップ","おすすめ\nピックアップ","LATEST\n紹介最新順","ランダム\nワールド"};
         string[] navEvents={"_Top","_Recommended","_Latest","_Random"};
         guide.navImages=new Image[4];
@@ -87,7 +88,7 @@ public static class MetaReaPrototypeBuilder
         var content=Rect(cr,"Content",20,267,760,858);
         var top=Rect(content,"TOP",0,0,760,858);guide.topPanel=top.gameObject;
         Label(top,"Section","DAILY DISCOVERY",0,0,760,34,22,Muted);
-        guide.topTitles=new Text[2];guide.topSummaries=new Text[2];guide.topCaptions=new Text[2];guide.topPictures=new RawImage[2];guide.topButtons=new Button[2];
+        guide.topTitles=new TMP_Text[2];guide.topSummaries=new TMP_Text[2];guide.topCaptions=new TMP_Text[2];guide.topPictures=new RawImage[2];guide.topButtons=new Button[2];
         for(int i=0;i<2;i++)
         {
             var b=Button(top,"Daily "+i,"",0,44+i*401,760,388,i==0?"_DailyOne":"_DailyTwo");guide.topButtons[i]=b;
@@ -95,55 +96,55 @@ public static class MetaReaPrototypeBuilder
             guide.topPictures[i]=Photo(r,"Photo",6,6,748,218);
             guide.topCaptions[i]=Label(r,"Caption",i==0?"今日のランダムワールド①":"今日のランダムワールド②",20,231,720,32,21,Cyan);
             guide.topTitles[i]=Label(r,"Name","読込待ち",20,268,704,51,28,Ink);
-            guide.topTitles[i].resizeTextForBestFit=true;guide.topTitles[i].resizeTextMinSize=20;guide.topTitles[i].resizeTextMaxSize=28;
+            guide.topTitles[i].enableAutoSizing=true;guide.topTitles[i].fontSizeMin=20;guide.topTitles[i].fontSizeMax=28;
             guide.topSummaries[i]=Label(r,"Summary","",20,322,704,55,21,Muted);
         }
 
         var list=Rect(content,"List",0,0,760,858);guide.listPanel=list.gameObject;
         guide.sectionLabel=Label(list,"Section","LATEST WORLDS",0,0,500,40,22,Muted);
         guide.reshuffleButton=Button(list,"Shuffle","再抽選",620,0,140,40,"_Reshuffle",21);
-        guide.rows=new GameObject[4];guide.rowTitles=new Text[4];guide.rowSummaries=new Text[4];guide.rowPictures=new RawImage[4];
+        guide.rows=new GameObject[4];guide.rowTitles=new TMP_Text[4];guide.rowSummaries=new TMP_Text[4];guide.rowPictures=new RawImage[4];
         for(int i=0;i<4;i++)
         {
             var b=Button(list,"World row "+i,"",0,51+i*176,760,165,"_Row"+i);guide.rows[i]=b.gameObject;
             var r=(RectTransform)b.transform;
             guide.rowPictures[i]=Photo(r,"Photo",6,6,260,153);
             guide.rowTitles[i]=Label(r,"Name","",285,10,415,66,26,Ink);
-            guide.rowTitles[i].resizeTextForBestFit=true;guide.rowTitles[i].resizeTextMinSize=20;guide.rowTitles[i].resizeTextMaxSize=26;
+            guide.rowTitles[i].enableAutoSizing=true;guide.rowTitles[i].fontSizeMin=20;guide.rowTitles[i].fontSizeMax=26;
             guide.rowSummaries[i]=Label(r,"Summary","",285,83,415,69,20,Muted);
-            Label(r,"Arrow","›",711,48,38,65,43,Cyan,TextAnchor.MiddleCenter);
+            Label(r,"Arrow","›",711,48,38,65,43,Cyan,TextAlignmentOptions.Center);
         }
         guide.previousPage=Button(list,"Previous page","‹",190,771,78,66,"_PreviousPage",37);
-        guide.pageLabel=Label(list,"Page","1 / 2",280,771,200,66,26,Ink,TextAnchor.MiddleCenter);
+        guide.pageLabel=Label(list,"Page","1 / 2",280,771,200,66,26,Ink,TextAlignmentOptions.Center);
         guide.nextPage=Button(list,"Next page","›",492,771,78,66,"_NextPage",37);
 
         var detail=Rect(content,"Detail",0,0,760,858);guide.detailPanel=detail.gameObject;
         guide.detailPicture=Photo(detail,"Large photo",0,0,760,428);
-        guide.detailTitle=Label(detail,"Name","",10,441,740,79,34,Ink,TextAnchor.MiddleCenter);
-        guide.detailTitle.resizeTextForBestFit=true;guide.detailTitle.resizeTextMinSize=24;guide.detailTitle.resizeTextMaxSize=34;
+        guide.detailTitle=Label(detail,"Name","",10,441,740,79,34,Ink,TextAlignmentOptions.Center);
+        guide.detailTitle.enableAutoSizing=true;guide.detailTitle.fontSizeMin=24;guide.detailTitle.fontSizeMax=34;
         // A scrollable description has a fixed viewport, so buttons never move.
         var viewport=Rect(detail,"Description viewport",16,530,728,114);var mask=viewport.gameObject.AddComponent<RectMask2D>();
-        var text=Label(viewport,"Description","",0,0,728,114,23,Muted,TextAnchor.UpperCenter);
-        text.verticalOverflow=VerticalWrapMode.Overflow;
+        var text=Label(viewport,"Description","",0,0,728,114,23,Muted,TextAlignmentOptions.Top);
+        text.overflowMode = TextOverflowModes.Overflow;
         var fitter=text.gameObject.AddComponent<ContentSizeFitter>();fitter.verticalFit=ContentSizeFitter.FitMode.PreferredSize;
         var scroll=viewport.gameObject.AddComponent<ScrollRect>();scroll.viewport=viewport;scroll.content=text.rectTransform;scroll.horizontal=false;scroll.vertical=true;scroll.movementType=ScrollRect.MovementType.Clamped;
         var scrollSurface=viewport.gameObject.AddComponent<Image>();scrollSurface.color=new Color(0,0,0,.001f);
         guide.detailDescription=text;
-        guide.platformNotice=Label(detail,"Platform notice","",5,650,750,48,18,new Color(1,.79f,.4f),TextAnchor.MiddleCenter);
+        guide.platformNotice=Label(detail,"Platform notice","",5,650,750,48,18,new Color(1,.79f,.4f),TextAlignmentOptions.Center);
         guide.previousWorld=Button(detail,"Previous world","◀ 前へ",0,707,195,77,"_PreviousWorld",23);
         guide.portalButton=Button(detail,"Portal","PORTAL\nこの世界へ",207,696,346,98,"_Portal",29,true);
-        guide.portalButtonLabel=guide.portalButton.GetComponentInChildren<Text>();
+        guide.portalButtonLabel=guide.portalButton.GetComponentInChildren<TMP_Text>();
         guide.nextWorld=Button(detail,"Next world","次へ ▶",565,707,195,77,"_NextWorld",23);
-        guide.returnLabel=Button(detail,"Back","一覧に戻る",0,807,760,50,"_Back",23).GetComponentInChildren<Text>();
+        guide.returnLabel=Button(detail,"Back","一覧に戻る",0,807,760,50,"_Back",23).GetComponentInChildren<TMP_Text>();
 
         var ad=Rect(content,"Advertisement detail",0,0,760,858);guide.adPanel=ad.gameObject;
         Label(ad,"Disclosure","PR",0,0,760,40,22,Muted);
         guide.adPicture=Photo(ad,"Ad photo",0,50,760,428);
-        guide.adTitle=Label(ad,"Ad title","",15,493,730,80,31,Ink,TextAnchor.MiddleCenter);
-        guide.adDescription=Label(ad,"Ad description","",20,590,720,115,22,Muted,TextAnchor.MiddleCenter);
-        guide.adSponsor=Label(ad,"Sponsor","",20,710,720,36,19,Muted,TextAnchor.MiddleCenter);
+        guide.adTitle=Label(ad,"Ad title","",15,493,730,80,31,Ink,TextAlignmentOptions.Center);
+        guide.adDescription=Label(ad,"Ad description","",20,590,720,115,22,Muted,TextAlignmentOptions.Center);
+        guide.adSponsor=Label(ad,"Sponsor","",20,710,720,36,19,Muted,TextAlignmentOptions.Center);
         guide.adPortalButton=Button(ad,"Ad portal","PORTAL  この世界へ",130,753,500,62,"_AdPortal",25,true);
-        guide.adPortalLabel=guide.adPortalButton.GetComponentInChildren<Text>();
+        guide.adPortalLabel=guide.adPortalButton.GetComponentInChildren<TMP_Text>();
         Button(ad,"Ad back","元の画面に戻る",0,823,760,35,"_AdBack",21);
 
         Image(cr,"Ad divider",0,1148,800,2,new Color(.32f,.43f,.51f));
@@ -165,8 +166,8 @@ public static class MetaReaPrototypeBuilder
         ring.GetComponent<MeshFilter>().sharedMesh=RingMesh();ring.GetComponent<MeshRenderer>().sharedMaterial=glow;
         var portalCanvas=new GameObject("Destination label",typeof(RectTransform),typeof(Canvas));portalCanvas.transform.SetParent(preview.transform,false);portalCanvas.GetComponent<Canvas>().renderMode=RenderMode.WorldSpace;
         var pr=(RectTransform)portalCanvas.transform;pr.sizeDelta=new Vector2(650,160);pr.localScale=Vector3.one*.001f;pr.localPosition=new Vector3(0,1.88f,0);
-        guide.portalDestinationLabel=Label(pr,"World","共有ポータル",0,0,650,100,32,Ink,TextAnchor.MiddleCenter);
-        Label(pr,"Preview disclaimer","Editor Preview / 実移動はVRChatで確認",0,105,650,50,20,Cyan,TextAnchor.MiddleCenter);
+        guide.portalDestinationLabel=Label(pr,"World","共有ポータル",0,0,650,100,32,Ink,TextAlignmentOptions.Center);
+        Label(pr,"Preview disclaimer","Editor Preview / 実移動はVRChatで確認",0,105,650,50,20,Cyan,TextAlignmentOptions.Center);
         preview.SetActive(false);
 
         var room=new GameObject("Prototype room - 配布Prefabには含まれません");
@@ -195,8 +196,8 @@ public static class MetaReaPrototypeBuilder
     }
     static Image Image(Transform p,string n,float x,float y,float w,float h,Color c)
     {var r=Rect(p,n,x,y,w,h);var im=r.gameObject.AddComponent<Image>();im.color=c;im.raycastTarget=false;return im;}
-    static Text Label(Transform p,string n,string value,float x,float y,float w,float h,int size,Color color,TextAnchor align=TextAnchor.UpperLeft)
-    {var r=Rect(p,n,x,y,w,h);var t=r.gameObject.AddComponent<Text>();t.font=font;t.fontSize=size;t.text=value;t.color=color;t.alignment=align;t.supportRichText=false;t.raycastTarget=false;t.horizontalOverflow=HorizontalWrapMode.Wrap;t.verticalOverflow=VerticalWrapMode.Truncate;return t;}
+    static TMP_Text Label(Transform p,string n,string value,float x,float y,float w,float h,int size,Color color,TextAlignmentOptions align=TextAlignmentOptions.TopLeft)
+    {var r=Rect(p,n,x,y,w,h);var t=r.gameObject.AddComponent<TextMeshProUGUI>();t.font=font;t.fontSize=size;t.text=value;t.color=color;t.alignment=align;t.richText=false;t.raycastTarget=false;t.enableWordWrapping = true;t.overflowMode = TextOverflowModes.Truncate;return t;}
     static RawImage Photo(Transform p,string n,float x,float y,float w,float h)
     {var r=Rect(p,n,x,y,w,h);var image=r.gameObject.AddComponent<RawImage>();image.color=Color.white;image.raycastTarget=false;return image;}
     static Button Button(Transform p,string n,string label,float x,float y,float w,float h,string method,int size=24,bool primary=false)
@@ -204,7 +205,7 @@ public static class MetaReaPrototypeBuilder
         var r=Rect(p,n,x,y,w,h);var im=r.gameObject.AddComponent<Image>();im.color=primary?new Color(0,.43f,.66f):Panel;
         var outline=r.gameObject.AddComponent<Outline>();outline.effectColor=primary?Cyan:new Color(.11f,.28f,.4f);outline.effectDistance=new Vector2(1,-1);
         var b=r.gameObject.AddComponent<Button>();b.targetGraphic=im;var colors=b.colors;colors.highlightedColor=new Color(1.15f,1.15f,1.15f);colors.pressedColor=new Color(.7f,.85f,1);colors.disabledColor=new Color(.4f,.4f,.4f,.6f);b.colors=colors;
-        if(!string.IsNullOrEmpty(label))Label(r,"Label",label,4,2,w-8,h-4,size,Ink,TextAnchor.MiddleCenter);
+        if(!string.IsNullOrEmpty(label))Label(r,"Label",label,4,2,w-8,h-4,size,Ink,TextAlignmentOptions.Center);
         UnityEventTools.AddStringPersistentListener(b.onClick,udon.SendCustomEvent,method);return b;
     }
     static Material Material(string name,Color color,bool unlit=false)
@@ -222,4 +223,5 @@ public static class MetaReaPrototypeBuilder
         var mesh=new Mesh();mesh.name="Portal preview ring";mesh.vertices=vertices;mesh.triangles=triangles;mesh.RecalculateNormals();AssetDatabase.CreateAsset(mesh,Root+"/Generated/PortalRing.asset");return mesh;
     }
 }
+
 

@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -35,11 +36,11 @@ public static class MetaReaCompactLayout
                 Place(g.sponsoredWorldPictures[i].transform, 8, 8, 356, 200.25f);
                 Place(title.transform, 10, 214, 352, 30);
                 title.fontSize = 20;
-                title.resizeTextForBestFit = false;
-                title.resizeTextMinSize = 20;
-                title.resizeTextMaxSize = 24;
-                title.horizontalOverflow = HorizontalWrapMode.Wrap;
-                title.verticalOverflow = VerticalWrapMode.Truncate;
+                title.enableAutoSizing = false;
+                title.fontSizeMin = 20;
+                title.fontSizeMax = 24;
+                title.enableWordWrapping = true;
+                title.overflowMode = TextOverflowModes.Truncate;
                 var gold = card.Find("Gold frame");
                 Place(gold, 0, 0, 372, 252);
                 if (gold != null) for (int edge = 0; edge < 4; edge++)
@@ -79,12 +80,12 @@ public static class MetaReaCompactLayout
     {
         if (t == null) return;
         Place(t, x, y, 760, 18);
-        var label = t.GetComponent<Text>();
+        var label = t.GetComponent<TMP_Text>();
         if (label != null)
         {
-            label.fontSize = 14; label.resizeTextForBestFit = false; label.alignment = TextAnchor.MiddleLeft;
+            label.fontSize = 14; label.enableAutoSizing = false; label.alignment = TextAlignmentOptions.Left;
             // CJK font line metrics exceed the visible PR glyph height.
-            label.verticalOverflow = VerticalWrapMode.Overflow;
+            label.overflowMode = TextOverflowModes.Overflow;
         }
     }
     static void Place(Transform t, float x, float y, float width, float height)
@@ -95,3 +96,4 @@ public static class MetaReaCompactLayout
         r.anchoredPosition = new Vector2(x, -y); r.sizeDelta = new Vector2(width, height);
     }
 }
+

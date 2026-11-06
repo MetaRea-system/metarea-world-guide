@@ -83,6 +83,7 @@ public static class MetaReaAssetsEntry
     public static bool EnsureEntry(bool revealCreated)
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return false;
+        MetaReaTextResources.EnsureSettings();
         MigrateEntry();
         EnsureDocumentation();
         // Never overwrite a user's existing prefab, including its GUID/overrides.

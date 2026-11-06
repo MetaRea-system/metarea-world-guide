@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -9,9 +10,9 @@ public static class MetaReaAdvertisingLayout
     {
         if (guide == null || guide.adPanel == null || guide.topPanel == null) return;
         guide.adDownloadStatus = Label(guide.adPanel.transform,"HQ download status",guide.adTitle.font,360,575,390,24,16);
-        guide.adDownloadStatus.alignment = TextAnchor.MiddleRight;
+        guide.adDownloadStatus.alignment = TextAlignmentOptions.Right;
         guide.adQrStatus = Label(guide.adPanel.transform,"QR download status",guide.adTitle.font,664,675,96,96,14);
-        guide.adQrStatus.alignment = TextAnchor.MiddleCenter;
+        guide.adQrStatus.alignment = TextAlignmentOptions.Center;
         guide.initialTopGroup = guide.topPanel.GetComponent<CanvasGroup>();
         if (guide.initialTopGroup == null) guide.initialTopGroup = guide.topPanel.AddComponent<CanvasGroup>();
         var canvas = guide.topPanel.GetComponentInParent<Canvas>();
@@ -21,12 +22,12 @@ public static class MetaReaAdvertisingLayout
         background.color = guide.backgroundColor; background.raycastTarget = true;
         guide.initialLoadingPanel = panel.gameObject;
         guide.initialLoadingLabel = Label(panel,"Status",guide.adTitle.font,20,410,720,120,24);
-        guide.initialLoadingLabel.alignment = TextAnchor.MiddleCenter;
+        guide.initialLoadingLabel.alignment = TextAlignmentOptions.Center;
         guide.initialLoadingLabel.text = "TOPを読み込んでいます…";
         guide.initialLoadingPanel.SetActive(false);
         guide.adDownloadStatus.gameObject.SetActive(false); guide.adQrStatus.gameObject.SetActive(false);
-        guide.adTitle.resizeTextForBestFit = true; guide.adTitle.resizeTextMinSize = 20; guide.adTitle.resizeTextMaxSize = 28;
-        guide.adDescription.fontSize = 18; guide.adDescription.resizeTextForBestFit = false;
+        guide.adTitle.enableAutoSizing = true; guide.adTitle.fontSizeMin = 20; guide.adTitle.fontSizeMax = 28;
+        guide.adDescription.fontSize = 18; guide.adDescription.enableAutoSizing = false;
         UdonSharpEditorUtility.CopyProxyToUdon(guide); EditorUtility.SetDirty(guide);
     }
     static RectTransform Rect(Transform parent,string name,float x,float y,float width,float height)
@@ -37,12 +38,13 @@ public static class MetaReaAdvertisingLayout
         rect.anchorMin=rect.anchorMax=rect.pivot=new Vector2(0,1);
         rect.anchoredPosition=new Vector2(x,-y); rect.sizeDelta=new Vector2(width,height); return rect;
     }
-    static Text Label(Transform parent,string name,Font font,float x,float y,float width,float height,int size)
+    static TMP_Text Label(Transform parent,string name,TMP_FontAsset font,float x,float y,float width,float height,int size)
     {
-        var rect=Rect(parent,name,x,y,width,height); var label=rect.GetComponent<Text>();
-        if(label==null)label=rect.gameObject.AddComponent<Text>();
+        var rect=Rect(parent,name,x,y,width,height); var label=rect.GetComponent<TMP_Text>();
+        if(label==null)label=rect.gameObject.AddComponent<TextMeshProUGUI>();
         label.font=font;label.fontSize=size;label.text="";label.color=new Color(.64f,.77f,.86f);
-        label.supportRichText=false;label.raycastTarget=false;label.horizontalOverflow=HorizontalWrapMode.Wrap;
-        label.verticalOverflow=VerticalWrapMode.Truncate;return label;
+        label.richText=false;label.raycastTarget=false;label.enableWordWrapping = true;
+        label.overflowMode = TextOverflowModes.Truncate;return label;
     }
 }
+

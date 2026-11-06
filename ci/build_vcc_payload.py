@@ -33,7 +33,7 @@ def validate():
     seen = {}
     references = set()
     sdk = json.loads((ROOT/'ci/sdk-reference-guids.json').read_text(encoding='utf-8-sig'))
-    if any(not path.startswith(('Packages/com.vrchat.', 'Packages/com.unity.ugui/')) for path in sdk.values()):
+    if any(not path.startswith(('Packages/com.vrchat.', 'Packages/com.unity.ugui/', 'Packages/com.unity.textmeshpro/')) for path in sdk.values()):
         raise ValueError('External-reference allowlist contains a non-SDK reference')
     for path in files:
         relative = path.relative_to(ROOT).as_posix()

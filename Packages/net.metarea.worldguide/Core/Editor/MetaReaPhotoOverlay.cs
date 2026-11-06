@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -64,7 +65,7 @@ public static class MetaReaPhotoOverlay
         image.sprite=sprite;image.type=Image.Type.Sliced;image.color=new Color(0,0,0,.58f);image.raycastTarget=false;
         return image;
     }
-    static Shadow AddShadow(Text text)
+    static Shadow AddShadow(TMP_Text text)
     {
         var shadow=text.GetComponent<Shadow>();
         if(shadow==null)shadow=text.gameObject.AddComponent<Shadow>();
@@ -73,3 +74,4 @@ public static class MetaReaPhotoOverlay
         return shadow;
     }
 }
+

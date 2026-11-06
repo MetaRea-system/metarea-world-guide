@@ -20,6 +20,7 @@ public class MetaReaWallGuideInspector : Editor
     }
     public override void OnInspectorGUI()
     {
+        MetaReaTextResources.DrawFallbackNotice();
         if (UdonSharpEditorUtility.GetBackingUdonBehaviour((MetaReaWallGuide)target) == null)
         { UdonSharpGUI.DrawDefaultUdonSharpBehaviourHeader(target); return; }
         if (((MetaReaWallGuide)target).isSharedDataSource)

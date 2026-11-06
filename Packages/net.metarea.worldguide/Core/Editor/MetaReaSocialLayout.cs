@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEngine;
@@ -47,15 +48,15 @@ public static class MetaReaSocialLayout
         close.navigation = new Navigation { mode = Navigation.Mode.None };
         close.onClick = new Button.ButtonClickedEvent();
         UnityEventTools.AddStringPersistentListener(close.onClick, udon.SendCustomEvent, "_CloseX");
-        Label(closeRect, "Label", "×", guide.detailTitle.font, 0, 0, 58, 58, 34, guide.buttonTextColor).alignment = TextAnchor.MiddleCenter;
+        Label(closeRect, "Label", "×", guide.detailTitle.font, 0, 0, 58, 58, 34, guide.buttonTextColor).alignment = TextAlignmentOptions.Center;
 
         var fieldRect = Rect(panel, "X URL", 24, 90, 632, 66);
         var fieldImage = fieldRect.GetComponent<Image>() ?? fieldRect.gameObject.AddComponent<Image>(); fieldImage.color = guide.cardColor;
-        var field = fieldRect.GetComponent<InputField>() ?? fieldRect.gameObject.AddComponent<InputField>();
-        field.targetGraphic = fieldImage; field.readOnly = true; field.lineType = InputField.LineType.SingleLine;
+        var field = fieldRect.GetComponent<TMP_InputField>() ?? fieldRect.gameObject.AddComponent<TMP_InputField>();
+        field.textViewport = fieldRect; field.targetGraphic = fieldImage; field.readOnly = true; field.lineType = TMP_InputField.LineType.SingleLine;
         field.navigation = new Navigation { mode = Navigation.Mode.None };
         field.textComponent = Label(fieldRect, "Text", "", guide.detailTitle.font, 14, 0, 604, 66, 26, guide.bodyColor);
-        field.textComponent.alignment = TextAnchor.MiddleLeft;
+        field.textComponent.alignment = TextAlignmentOptions.Left;
         field.text = guide.xProfileUrl;
         Label(panel, "X help", "URLをブラウザーに入力してご覧ください。", guide.detailTitle.font, 24, 178, 632, 30, 20, guide.secondaryColor);
         guide.xUrlPanel = overlay.gameObject; guide.xUrlField = field;
@@ -74,11 +75,12 @@ public static class MetaReaSocialLayout
         return rect;
     }
 
-    static Text Label(Transform parent, string name, string value, Font font, float x, float y, float w, float h, int size, Color color)
+    static TMP_Text Label(Transform parent, string name, string value, TMP_FontAsset font, float x, float y, float w, float h, int size, Color color)
     {
-        var r = Rect(parent, name, x, y, w, h); var t = r.GetComponent<Text>() ?? r.gameObject.AddComponent<Text>();
-        t.font = font; t.fontSize = size; t.text = value; t.color = color; t.raycastTarget = false; t.supportRichText = false;
-        t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Truncate;
+        var r = Rect(parent, name, x, y, w, h); var t = r.GetComponent<TMP_Text>() ?? r.gameObject.AddComponent<TextMeshProUGUI>();
+        t.font = font; t.fontSize = size; t.text = value; t.color = color; t.raycastTarget = false; t.richText = false;
+        t.enableWordWrapping = true; t.overflowMode = TextOverflowModes.Truncate;
         return t;
     }
 }
+

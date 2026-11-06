@@ -1,3 +1,4 @@
+using TMPro;
 using UnityEditor;
 using UnityEditor.Events;
 using UnityEngine;
@@ -50,11 +51,11 @@ public static class MetaReaHeaderLayout
             clone.name = "World Archive URL overlay"; overlayTransform = clone.transform;
         }
         guide.archiveUrlPanel = overlayTransform.gameObject;
-        guide.archiveUrlField = overlayTransform.Find("Card/X URL").GetComponent<InputField>();
+        guide.archiveUrlField = overlayTransform.Find("Card/X URL").GetComponent<TMP_InputField>();
         guide.archiveUrlField.text = guide.archiveUrl;
-        var heading = overlayTransform.Find("Card/X heading").GetComponent<Text>();
+        var heading = overlayTransform.Find("Card/X heading").GetComponent<TMP_Text>();
         heading.text = "MetaRea WORLD ARCHIVE"; heading.fontSize = 27;
-        overlayTransform.Find("Card/X help").GetComponent<Text>().text = "ワールドアーカイブのURLです。";
+        overlayTransform.Find("Card/X help").GetComponent<TMP_Text>().text = "ワールドアーカイブのURLです。";
         Wire(overlayTransform.GetComponent<Button>(), udon, "_CloseArchive");
         Wire(overlayTransform.Find("Card/Close").GetComponent<Button>(), udon, "_CloseArchive");
         iconRect.SetAsLastSibling();
@@ -75,10 +76,10 @@ public static class MetaReaHeaderLayout
         if (boothOverlay == null) { var clone = Object.Instantiate(guide.xUrlPanel,canvas,false); clone.name = "BOOTH URL overlay"; boothOverlay = clone.transform; }
         ((RectTransform)boothOverlay).sizeDelta = ((RectTransform)canvas).sizeDelta;
         guide.boothUrlPanel = boothOverlay.gameObject;
-        guide.boothUrlField = boothOverlay.Find("Card/X URL").GetComponent<InputField>();
+        guide.boothUrlField = boothOverlay.Find("Card/X URL").GetComponent<TMP_InputField>();
         guide.boothUrlField.text = guide.boothUrl;
-        boothOverlay.Find("Card/X heading").GetComponent<Text>().text = "MetaRea の BOOTH";
-        boothOverlay.Find("Card/X help").GetComponent<Text>().text = "URLをブラウザーに入力してショップをご覧ください。";
+        boothOverlay.Find("Card/X heading").GetComponent<TMP_Text>().text = "MetaRea の BOOTH";
+        boothOverlay.Find("Card/X help").GetComponent<TMP_Text>().text = "URLをブラウザーに入力してショップをご覧ください。";
         Wire(boothOverlay.GetComponent<Button>(),udon,"_CloseBooth");
         Wire(boothOverlay.Find("Card/Close").GetComponent<Button>(),udon,"_CloseBooth");
         boothRect.SetAsLastSibling();
@@ -113,3 +114,4 @@ public static class MetaReaHeaderLayout
         return r;
     }
 }
+

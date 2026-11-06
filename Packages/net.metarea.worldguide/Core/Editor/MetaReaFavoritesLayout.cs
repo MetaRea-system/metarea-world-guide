@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.Linq;
 using UnityEditor;
@@ -36,7 +37,7 @@ public static class MetaReaFavoritesLayout
         {
             nav[i] = canvas.Find("Navigation " + i).GetComponent<Image>();
             Place(nav[i].rectTransform, 20 + i * 153, 156, 148, 92);
-            var label = nav[i].GetComponentInChildren<Text>(true);
+            var label = nav[i].GetComponentInChildren<TMP_Text>(true);
             Place(label.rectTransform, 0, 0, 148, 92); label.fontSize = 20;
         }
         var fifth = canvas.Find("Navigation 4");
@@ -49,7 +50,7 @@ public static class MetaReaFavoritesLayout
         fifthButton.onClick = new Button.ButtonClickedEvent();
         UnityEventTools.AddStringPersistentListener(fifthButton.onClick, udon.SendCustomEvent, "_Favorites");
         nav[4] = fifth.GetComponent<Image>(); Place(nav[4].rectTransform, 632, 156, 148, 92);
-        var fifthLabel = fifth.GetComponentInChildren<Text>(true);
+        var fifthLabel = fifth.GetComponentInChildren<TMP_Text>(true);
         fifthLabel.text = "お気に入り\nワールド"; Place(fifthLabel.rectTransform, 0, 0, 148, 92); fifthLabel.fontSize = 20;
         g.navImages = nav;
 
@@ -57,9 +58,9 @@ public static class MetaReaFavoritesLayout
         g.favoritesPanel = panel.gameObject;
         g.favoriteSection = Label(panel, "Section", "お気に入りフォルダ", g, 0, 0, 350, 48, 23, g.secondaryColor);
         g.favoriteBack = Button(panel, "Back to folders", "＜ フォルダ一覧", "_FavoriteFolders", g, 0, 0, 340, 48);
-        g.favoriteBack.GetComponentInChildren<Text>().fontSize = 22;
+        g.favoriteBack.GetComponentInChildren<TMP_Text>().fontSize = 22;
         g.favoriteBack.gameObject.SetActive(false);
-        g.favoriteFolderButtons = new Button[8]; g.favoriteFolderTitles = new Text[8]; g.favoriteFolderCounts = new Text[8];
+        g.favoriteFolderButtons = new Button[8]; g.favoriteFolderTitles = new TMP_Text[8]; g.favoriteFolderCounts = new TMP_Text[8];
         for (int i = 0; i < 8; i++)
         {
             var folder = Button(panel, "Folder " + i, "", "_FavoriteFolder" + i, g, (i % 2) * 388, 82 + (i / 2) * 192, 372, 176);
@@ -69,28 +70,28 @@ public static class MetaReaFavoritesLayout
             folder.gameObject.SetActive(false);
         }
         g.favoritePageLabel = Label(panel, "Page", "登録なし", g, 350, 0, 240, 48, 21, g.secondaryColor);
-        g.favoritePageLabel.alignment = TextAnchor.MiddleCenter;
+        g.favoritePageLabel.alignment = TextAlignmentOptions.Center;
         g.favoritePrevious = Button(panel, "Previous", "＜", "_FavoritePrevious", g, 596, 0, 76, 48);
         g.favoriteNext = Button(panel, "Next", "＞", "_FavoriteNext", g, 684, 0, 76, 48);
         g.favoriteHelp = Label(panel, "Help", "お気に入りワールドはまだ登録されていません。", g, 0, 49, 760, 30, 19, g.secondaryColor);
-        g.favoriteButtons = new Button[8]; g.favoriteTitles = new Text[8]; g.favoriteAuthors = new Text[8];
+        g.favoriteButtons = new Button[8]; g.favoriteTitles = new TMP_Text[8]; g.favoriteAuthors = new TMP_Text[8];
         for (int i = 0; i < 8; i++)
         {
             var button = Button(panel, "Favorite " + i, "", "_Favorite" + i, g, 0, 82 + i * 96, 760, 88);
             g.favoriteButtons[i] = button;
             g.favoriteTitles[i] = Label(button.transform, "Name", "ワールド名", g, 20, 2, 580, 58, 20, g.headingColor);
-            g.favoriteTitles[i].alignment = TextAnchor.MiddleLeft;
+            g.favoriteTitles[i].alignment = TextAlignmentOptions.Left;
             g.favoriteAuthors[i] = Label(button.transform, "Author", "作者名", g, 20, 61, 580, 26, 18, g.secondaryColor);
             var arrow = Label(button.transform, "Arrow", "PORTAL  ›", g, 620, 20, 120, 48, 19, g.accentColor);
-            arrow.alignment = TextAnchor.MiddleCenter;
+            arrow.alignment = TextAlignmentOptions.Center;
             button.gameObject.SetActive(false);
         }
         panel.gameObject.SetActive(false);
         MetaReaClientCompatibility.Apply(g);
         g.headingTexts = g.headingTexts.Concat(g.favoriteTitles).Concat(g.favoriteFolderTitles).Distinct().ToArray();
         g.secondaryTexts = g.secondaryTexts.Concat(g.favoriteAuthors).Concat(g.favoriteFolderCounts).Concat(new[] { g.favoritePageLabel, g.favoriteHelp, g.favoriteSection }).Distinct().ToArray();
-        g.buttonTexts = g.buttonTexts.Concat(fifth.GetComponentsInChildren<Text>(true)).Concat(new[] { g.favoritePrevious.GetComponentInChildren<Text>(), g.favoriteNext.GetComponentInChildren<Text>() }).Distinct().ToArray();
-        g.accentTexts = g.accentTexts.Concat(panel.GetComponentsInChildren<Text>(true).Where(t => t.name == "Arrow")).Distinct().ToArray();
+        g.buttonTexts = g.buttonTexts.Concat(fifth.GetComponentsInChildren<TMP_Text>(true)).Concat(new[] { g.favoritePrevious.GetComponentInChildren<TMP_Text>(), g.favoriteNext.GetComponentInChildren<TMP_Text>() }).Distinct().ToArray();
+        g.accentTexts = g.accentTexts.Concat(panel.GetComponentsInChildren<TMP_Text>(true).Where(t => t.name == "Arrow")).Distinct().ToArray();
         g.cardImages = g.cardImages.Concat(panel.GetComponentsInChildren<Button>(true).Select(b => b.GetComponent<Image>())).Concat(new[] { nav[4] }).Distinct().ToArray();
         g.borderOutlines = g.GetComponentsInChildren<Outline>(true);
         g._ApplyAppearance();
@@ -106,11 +107,11 @@ public static class MetaReaFavoritesLayout
         var r = child == null ? new GameObject(name, typeof(RectTransform)).GetComponent<RectTransform>() : (RectTransform)child;
         r.SetParent(parent, false); r.gameObject.layer = 0; Place(r, x, y, w, h); return r;
     }
-    static Text Label(Transform parent, string name, string text, MetaReaWallGuide g, float x, float y, float w, float h, int size, Color color)
+    static TMP_Text Label(Transform parent, string name, string text, MetaReaWallGuide g, float x, float y, float w, float h, int size, Color color)
     {
-        var r = Rect(parent, name, x, y, w, h); var t = r.GetComponent<Text>() ?? r.gameObject.AddComponent<Text>();
-        t.text = text; t.font = g.detailTitle.font; t.fontSize = size; t.color = color; t.supportRichText = false; t.raycastTarget = false;
-        t.horizontalOverflow = HorizontalWrapMode.Wrap; t.verticalOverflow = VerticalWrapMode.Truncate; t.alignment = TextAnchor.MiddleLeft; return t;
+        var r = Rect(parent, name, x, y, w, h); var t = r.GetComponent<TMP_Text>() ?? r.gameObject.AddComponent<TextMeshProUGUI>();
+        t.text = text; t.font = g.detailTitle.font; t.fontSize = size; t.color = color; t.richText = false; t.raycastTarget = false;
+        t.enableWordWrapping = true; t.overflowMode = TextOverflowModes.Truncate; t.alignment = TextAlignmentOptions.Left; return t;
     }
     static Button Button(Transform parent, string name, string text, string method, MetaReaWallGuide g, float x, float y, float w, float h)
     {
@@ -118,8 +119,9 @@ public static class MetaReaFavoritesLayout
         var outline = r.GetComponent<Outline>() ?? r.gameObject.AddComponent<Outline>(); outline.effectColor = g.borderColor; outline.effectDistance = new Vector2(1, -1);
         var b = r.GetComponent<Button>() ?? r.gameObject.AddComponent<Button>(); b.targetGraphic = image; b.navigation = new Navigation { mode = Navigation.Mode.None };
         b.onClick = new Button.ButtonClickedEvent(); UnityEventTools.AddStringPersistentListener(b.onClick, UdonSharpEditorUtility.GetBackingUdonBehaviour(g).SendCustomEvent, method);
-        var label = Label(r, "Label", text, g, 0, 0, w, h, 26, g.buttonTextColor); label.alignment = TextAnchor.MiddleCenter; return b;
+        var label = Label(r, "Label", text, g, 0, 0, w, h, 26, g.buttonTextColor); label.alignment = TextAlignmentOptions.Center; return b;
     }
 }
+
 
 

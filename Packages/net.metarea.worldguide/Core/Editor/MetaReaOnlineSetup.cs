@@ -1,3 +1,4 @@
+using TMPro;
 using System;
 using System.Linq;
 using UnityEngine;
@@ -49,7 +50,7 @@ public static class MetaReaOnlineSetup
         return cachedPortalClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.17.7";
+    public const string GuideVersion = "0.18.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -137,8 +138,8 @@ public static class MetaReaOnlineSetup
         guide.sampleAdDetail = AssetDatabase.LoadAssetAtPath<Texture2D>(MetaReaPrototypeBuilder.Root + "/Samples/SponsorAds/Navy/detail.png");
         guide.onlineMode = true;
         // Downloaded text is content, not Unity rich-text markup.
-        foreach (var text in guide.GetComponentsInChildren<UnityEngine.UI.Text>(true))
-        { text.supportRichText = false; EditorUtility.SetDirty(text); }
+        foreach (var text in guide.GetComponentsInChildren<TMPro.TMP_Text>(true))
+        { text.richText = false; EditorUtility.SetDirty(text); }
         guide.pinnedSnapshot = ""; guide.sharedPortalWorldId = ""; guide.nextPortalTime = 0; guide.portalCooldownStarted = false;
         guide.sharedPortalFromDraw = false; guide.sharedPortalDrawTitle = "";
         MetaReaClientCompatibility.Apply(guide);
@@ -184,3 +185,5 @@ public static class MetaReaOnlineSetup
     }
 
 }
+
+
