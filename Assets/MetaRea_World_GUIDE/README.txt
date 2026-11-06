@@ -1,4 +1,4 @@
-MetaRea World GUIDE 0.17.6
+MetaRea World GUIDE 0.17.7
 
 導入は2ステップ
 1. Unityを閉じ、VCCでMetaRea World GUIDEを追加してからUnityを開きます。インポートが終わるまで待ってください。
