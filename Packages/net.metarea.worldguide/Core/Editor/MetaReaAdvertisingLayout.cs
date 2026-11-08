@@ -21,9 +21,12 @@ public static class MetaReaAdvertisingLayout
         if (background == null) background = panel.gameObject.AddComponent<Image>();
         background.color = guide.backgroundColor; background.raycastTarget = true;
         guide.initialLoadingPanel = panel.gameObject;
-        guide.initialLoadingLabel = Label(panel,"Status",guide.adTitle.font,20,410,720,120,24);
+        guide.initialLoadingLabel = Label(panel,"Status",guide.adTitle.font,20,245,720,500,24);
         guide.initialLoadingLabel.alignment = TextAlignmentOptions.Center;
-        guide.initialLoadingLabel.text = "TOPを読み込んでいます…";
+        guide.initialLoadingLabel.richText = true;
+        guide.initialLoadingLabel.enableAutoSizing = false;
+        guide.initialLoadingLabel.lineSpacing = 8;
+        guide.initialLoadingLabel.text = "<size=28>TOPを読み込んでいます…</size>\n\n" + MetaReaWallGuide.InitialLoadingGuidance;
         guide.initialLoadingPanel.SetActive(false);
         guide.adDownloadStatus.gameObject.SetActive(false); guide.adQrStatus.gameObject.SetActive(false);
         guide.adTitle.enableAutoSizing = true; guide.adTitle.fontSizeMin = 20; guide.adTitle.fontSizeMax = 28;

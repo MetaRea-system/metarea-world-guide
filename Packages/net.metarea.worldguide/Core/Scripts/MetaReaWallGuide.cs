@@ -157,6 +157,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public TMP_Text adQrStatus;
     public GameObject initialLoadingPanel;
     public TMP_Text initialLoadingLabel;
+    public const string InitialLoadingGuidance = "表示されない場合は設定で\n<size=26>Allow Untrusted URLs</size>\nをオンにしてください。\n\n<size=21>If nothing appears, please enable\n<size=24>Allow Untrusted URLs</size>\nin your VRChat settings.</size>";
+    private float initialLoadingStarted = -1f;
+    private bool initialRequestFailed;
+
     public CanvasGroup initialTopGroup;
     public TMP_Text bannerTitle;
     public RawImage bannerPicture;
@@ -3932,6 +3936,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3ImageFailed()
     {
+        if (!v4TopReady) initialRequestFailed = true;
         int key = v3ImageKey;
         if (v3ImageDownload != null) v3ImageDownload.Dispose();
         v3ImageDownload = null; v3ImageTexture = null; v3Verifying = false;
@@ -4027,6 +4032,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3RequestFailed(bool terminal)
     {
+        if (!v4TopReady) initialRequestFailed = true;
         int kind = v3RequestKind;
         V3AbandonStringRequest();
         v3RequestInFlight = false;
@@ -4837,7 +4843,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (initialTopGroup != null)
         { initialTopGroup.alpha = gated ? 0 : 1; initialTopGroup.interactable = !gated; initialTopGroup.blocksRaycasts = !gated; }
         if (initialLoadingPanel != null) initialLoadingPanel.SetActive(gated && view == 0);
-        if (initialLoadingLabel != null && gated) initialLoadingLabel.text = failed || imageFailed ? "取得できませんでした。自動で再試行します…" : "TOPを読み込んでいます…";
+        if (!gated) { initialLoadingStarted = -1f; initialRequestFailed = false; }
+        if (gated)
+        {
+            if (initialLoadingStarted < 0f) initialLoadingStarted = Time.realtimeSinceStartup;
+            MetaReaWallGuide source = sharedDataSource != null ? sharedDataSource : this;
+            bool interrupted = source.initialRequestFailed || source.failed || source.imageFailed || source.v3RequestAttempts > 1 || source.v3RecoveryPending || Time.realtimeSinceStartup-initialLoadingStarted >= 30f;
+            if (initialLoadingLabel != null)
+            {
+                string heading = interrupted ? "読み込みが完了しませんでした" : "TOPを読み込んでいます…";
+                initialLoadingLabel.text = "<size=28>" + heading + "</size>\n\n" + InitialLoadingGuidance;
+            }
+        }
         bool detail = modern && v4Layout && view == 3 && IsAdActive(openedAd);
         if (sponsorQrPicture != null) sponsorQrPicture.enabled = !detail || V4Loaded(v3QrImages[openedAd]);
         if (adDownloadStatus != null)

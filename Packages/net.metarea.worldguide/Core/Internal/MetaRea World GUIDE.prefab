@@ -23666,8 +23666,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 20, y: -410}
-  m_SizeDelta: {x: 720, y: 120}
+  m_AnchoredPosition: {x: 20, y: -245}
+  m_SizeDelta: {x: 720, y: 500}
   m_Pivot: {x: 0, y: 1}
 --- !u!222 &3673961695451085414
 CanvasRenderer:
@@ -23697,7 +23697,10 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: "TOP\u3092\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059\u2026"
+  m_text: "<size=28>TOP\u3092\u8AAD\u307F\u8FBC\u3093\u3067\u3044\u307E\u3059\u2026</size>\n\n\u8868\u793A\u3055\u308C\u306A\u3044\u5834\u5408\u306F\u8A2D\u5B9A\u3067\n<size=26>Allow
+    Untrusted URLs</size>\n\u3092\u30AA\u30F3\u306B\u3057\u3066\u304F\u3060\u3055\u3044\u3002\n\n<size=21>If
+    nothing appears, please enable\n<size=24>Allow Untrusted URLs</size>\nin your
+    VRChat settings.</size>"
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 310dcd62f9e5a6946aee42b20e598fbd, type: 2}
   m_sharedMaterial: {fileID: 996923321039638479, guid: 310dcd62f9e5a6946aee42b20e598fbd,
@@ -23737,7 +23740,7 @@ MonoBehaviour:
   m_textAlignment: 65535
   m_characterSpacing: 0
   m_wordSpacing: 0
-  m_lineSpacing: 0
+  m_lineSpacing: 8
   m_lineSpacingMax: 0
   m_paragraphSpacing: 0
   m_charWidthMaxAdj: 0
@@ -23749,7 +23752,7 @@ MonoBehaviour:
   m_enableKerning: 1
   m_enableExtraPadding: 0
   checkPaddingRequired: 0
-  m_isRichText: 0
+  m_isRichText: 1
   m_parseCtrlCharacters: 1
   m_isOrthographic: 1
   m_isCullingEnabled: 0
