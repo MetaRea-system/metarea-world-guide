@@ -762,6 +762,24 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool v4FirstTopCycle = true, v4FirstBannerCycle = true;
     private DataDictionary[] v4PreviewImages = new DataDictionary[16];
     private int v4ProbeFailures;
+
+    // A directly validated display snapshot remains usable until an explicit
+    // replacement commits. Network freshness is NOT extended or fabricated.
+    private bool v4SnapshotActive;
+    private double v4DisplayTime;
+    private bool v4CopyingSnapshot;
+    [UdonSynced] public int v4SharedRefreshSequence;
+    private int v4SeenRefreshSequence;
+    private int v4PendingRefreshSequence;
+    private int v4RefreshCategory = -1;
+    private int v4RefreshOwnerTerm;
+    private bool v4LocalBootstrap;
+    private string[] v4SetCacheKeys = new string[24];
+    private string[] v4SetCacheJson = new string[24];
+    private int v4SetCacheCursor;
+    private int v4RenderedVersion = -1;
+    private string[] v4PrefetchedTokens = new string[1024];
+
     [HideInInspector] public VRCUrl[] v3ManifestUrls;
     [HideInInspector] public VRCUrl[] v3SetUrls;
     [HideInInspector] public VRCUrl[] v3LatestUrls;
@@ -923,7 +941,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         v3RecoveryPending = false;
         // Only the owner may refresh the common base. Followers keep the
         // synchronized identifiers; a retry must never make a new local draw.
-        v3RecoveryBootstrap = V3Owner() && (v3BootstrapStopped || !V3BankUsable(v3BaseBank,v3BaseGeneration) || V3SharedExpired(0) || V3SharedExpired(1));
+        v3RecoveryBootstrap = !v4SnapshotActive && V3Owner() && (v3BootstrapStopped || !V3BankUsable(v3BaseBank,v3BaseGeneration) || V3SharedExpired(0) || V3SharedExpired(1));
         v3BootstrapStopped = false; v3LatestFailed = false;
         v3StoppedSelections[0] = ""; v3StoppedSelections[1] = "";
         for (int i = 0; i < v3ImageAttempts.Length; i++)
@@ -1398,11 +1416,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     }
 
     private bool StatusUsable()
-    { return sponsorStatusValid && (guideV3 && onlineMode ? V3Now() < v3StatusUntil : Time.realtimeSinceStartup - sponsorStatusReceived < 300f); }
+    { return (v4Protocol && onlineMode && v4SnapshotActive) || (sponsorStatusValid && (guideV3 && onlineMode ? V3Now() < v3StatusUntil : Time.realtimeSinceStartup - sponsorStatusReceived < 300f)); }
 
     private bool InPeriod(double start, double end)
     {
-        double now = guideV3 && onlineMode ? V3Now() : sponsorStatusUtc + Time.realtimeSinceStartup - sponsorStatusReceived;
+        double now = v4Protocol && onlineMode && v4SnapshotActive ? v4DisplayTime : guideV3 && onlineMode ? V3Now() : sponsorStatusUtc + Time.realtimeSinceStartup - sponsorStatusReceived;
         return now >= start && (end == 0 || now < end);
     }
 
@@ -3319,7 +3337,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (v3Maintenance || v3RecoveryPending || !ready || imageLoading || !sponsorStatusValid || v3RequestKind != 0 || v3DrawCategory >= 0 ||
             Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ServerWaitUntil ||
-            Time.realtimeSinceStartup >= v3NextStatus) return false;
+            (!v4SnapshotActive && Time.realtimeSinceStartup >= v3NextStatus)) return false;
         for (int i = 0; i < v3WireUrls.Length; i++) if (!string.IsNullOrEmpty(v3WireUrls[i])) return false;
         return true;
     }
@@ -3375,6 +3393,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         int kind = v3RequestKind;
         if (kind == 1)
         {
+            if (v4Protocol && !ready) return true;
             if (v3RequestBaseSelection != v3SharedBaseGeneration) return false;
             if (string.IsNullOrEmpty(v3RequestGeneration)) return V3Owner() && v3RequestOwnerTerm == v3OwnerTerm;
             return v3RequestGeneration == v3SharedBaseGeneration && v3RequestBank == v3SharedBaseBank;
@@ -3395,7 +3414,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (d == null || Str(d,"schema") != "metarea-guide-wait-v1" || !Flag(d,"waiting")) return false;
         bool busy = Str(d,"reason") == "busy";
-        float wait = busy ? Mathf.Max(Mathf.Clamp(Integer(d,"retryAfter",5),5,300),V3Backoff(v3RequestAttempts)) : Mathf.Clamp(Integer(d,"retryAfter",60),10,300)+Random.Range(0f,10f);
+        float wait = busy ? Mathf.Max(Mathf.Clamp(Integer(d,"retryAfter",5),5,300),V3Backoff(v3RequestAttempts))+Random.Range(0f,5f) : Mathf.Clamp(Integer(d,"retryAfter",60),10,300)+Random.Range(0f,10f);
         float until = Time.realtimeSinceStartup+wait;
         if (busy) v3JsonBusyUntil = until;
         else v3ServerWaitUntil = until;
@@ -3522,11 +3541,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (server <= 0 || expires < 0 || (expires != 0 && expires <= server)) return false;
         double clock = V3Now();
         bool localCopy = sharedDataSource != null && sharedDataSource.ready && sharedDataSource.v3BaseGeneration == generation && sharedDataSource.v3BaseBank == bank;
-        if (until <= server || (!localCopy && until <= clock) || until-server > 300) return false;
-        if (expires != 0 && expires <= clock) return false;
+        if (until <= server || (!localCopy && !v4CopyingSnapshot && until <= clock) || until-server > 300) return false;
+        if (!localCopy && !v4CopyingSnapshot && expires != 0 && expires <= clock) return false;
         if (clock > 0 && server > clock+120) return false;
         for (int i = 0; i < assets.Count; i++) V3RegisterAsset(bank,generation,assets[i].DataDictionary);
-        v3BankGenerations[bank] = generation; v3BankExpiry[bank] = expires;
+        v3BankGenerations[bank] = generation;
+        // Active banks have expiresAt=0 on the wire. Retention after retirement
+        // is a finite guarantee, not permission to read this fixed URL forever.
+        double retention = Number(d,"retentionSeconds");
+        if (retention <= 0 || retention > 604800) retention = 604800;
+        double bound = expires == 0 ? server+retention : expires;
+        if (!localCopy || v3BankExpiry[bank] == 0) v3BankExpiry[bank] = bound;
         V3AdvanceClock(server);
         return true;
     }
@@ -3827,6 +3852,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!V3BankUsable(bank,generation) || id < 0 || id > 31) return false;
         int key = bank*32+id;
         DataDictionary a = v3Assets[key];
+        // Prefetch each verified image once per token. Eviction is not a reason
+        // to download the whole catalogue again; visible demand still reloads.
+        if (a != null && v3PassiveImages && v4PrefetchedTokens[key] == Str(a,"imageToken")) return false;
         if (a == null || v3AssetGenerations[key] != generation || V3CacheSlot(Str(a,"imageToken")) >= 0 || v3ImageAttempts[key] >= 4 || Time.realtimeSinceStartup < v3ImageRetryAt[key]) return false;
         if (v3ImageUrls == null || key >= v3ImageUrls.Length || (v3ImageUrls[key] == null || string.IsNullOrEmpty(v3ImageUrls[key].Get())) || V3FreeCacheSlot() < 0) return false;
         int reserved = Integer(a,"width",0)*Integer(a,"height",0)*4;
@@ -3989,6 +4017,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (slot < 0 || !V3EnsureImageRoom(v3ReservedBytes,false)) { V3ImageFailed(); return; }
         if (v3CacheTextures[slot] != null) V3Evict(slot);
         v3CacheSizes[slot] = v3ReservedBytes; residentImageBytes += v3ReservedBytes; v3ReservedBytes = 0;
+        v4PrefetchedTokens[v3ImageKey] = v3ImageToken;
         v3CacheTokens[slot] = v3ImageToken; v3CacheTextures[slot] = v3ImageTexture;
         v3CacheDownloads[slot] = v3ImageDownload; v3CacheUsed[slot] = Time.realtimeSinceStartup;
         // A later cache eviction starts a new transaction, not the fifth retry
@@ -4040,7 +4069,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!v3BusyResponse && preferGuideV4 && v4Protocol && !ready && v4PendingBank < 0 && sharedGuideProtocol != 4 && (kind == 1 || kind == 5) && (terminal || v3RequestAttempts >= 4 || v4ProbeFailures >= 4))
         { V3CancelRequest(); V4SelectProtocol(false); v3BootstrapStopped = true; loading = true; failed = false; V3ArmRecovery(); v3NextStatus = v3RecoveryAt; return; }
         if (kind == 7 && (terminal || v3RequestAttempts >= 4))
-        { v3RequestKind = 0; V3ArmRecovery(); v4PendingStatusAt = v3RecoveryAt; return; }
+        { v3RequestKind = 0; V4CancelRefresh(); V3ArmRecovery(); return; }
         if (kind == 5 && (terminal || v3RequestAttempts >= 4))
         {
             v3RequestKind = 0; v3RequestAttempts = 0;
@@ -4048,7 +4077,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             V3ArmRecovery(); v3NextStatus = v3RecoveryAt;
             return;
         }
-        if (kind == 4)
+        if (kind == 4 && !v4SnapshotActive)
         {
             sponsorStatusValid = false; sponsorStatusLoading = false; sponsorStatusFailed = true;
             RefreshSponsorAvailability(); v3Version++;
@@ -4076,7 +4105,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         DataDictionary current = V3Object(d,"current");
         if (now <= 0 || until <= now || until-now > 300 || generations == null || generations.Count > 32 || current == null) return false;
         double clock = V3Now();
-        if (until <= clock || (clock > 0 && now > clock+120) || now < sponsorStatusUtc) return false;
+        if ((!v4CopyingSnapshot && until <= clock) || (clock > 0 && now > clock+120) || now < sponsorStatusUtc) return false;
         bool[] seen = new bool[32];
         for (int i = 0; i < generations.Count; i++)
         {
@@ -4094,14 +4123,19 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         legacy.SetValue("schema",new DataToken("metarea-sponsor-status-v1"));
         legacy.SetValue("generatedAtUnix",new DataToken(now));
         DataToken serialized;
-        if (!VRCJson.TrySerializeToJson(legacy,JsonExportType.Minify,out serialized) || !ApplySponsorStatus(serialized.String)) return false;
+        double previousDisplayTime = v4DisplayTime;
+        if (v4Protocol) v4DisplayTime = now;
+        if (!VRCJson.TrySerializeToJson(legacy,JsonExportType.Minify,out serialized) || !ApplySponsorStatus(serialized.String))
+        { v4DisplayTime = previousDisplayTime; return false; }
         V3AdvanceClock(now); v3StatusUntil = until;
         for (int b = 0; b < 32; b++) { v3BankExpiry[b] = now; }
         for (int i = 0; i < generations.Count; i++)
         {
             DataDictionary g = generations[i].DataDictionary;
             int bank = Integer(g,"bank",-1);
-            v3BankGenerations[bank] = Str(g,"generationId"); v3BankExpiry[bank] = Number(g,"expiresAtUnix");
+            v3BankGenerations[bank] = Str(g,"generationId");
+            double expiry = Number(g,"expiresAtUnix");
+            v3BankExpiry[bank] = expiry == 0 ? now+604800 : expiry;
         }
         v3LatestBank = latestBank; v3LatestGeneration = latestGeneration;
         v3BlockedWorldIds = V3Strings(V3List(d,"blockedWorldIds"),4096);
@@ -4114,7 +4148,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             { BuildOrder(); page = Mathf.Clamp(page,0,Mathf.Max(0,(PageItemCount()-1)/4)); }
         }
         sponsorStatusJson = json;
-        v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+        v3NextStatus = v4SnapshotActive ? float.MaxValue : Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
         if (v4Layout && V3Texture(v3BaseBank,v3BaseGeneration,0) != null) v4TopReady = true;
         v3Version++; return true;
     }
@@ -4141,7 +4175,12 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (!V3TakeStringResponse(result.Url.Get())) return;
         if (!V3RequestContextValid()) { staleResponseCount++; V3CancelRequest(); V3FailDraw("共有結果が更新されました。新しい結果を取得します"); return; }
-        DataDictionary d = V3Json(result.Result,300000);
+        V3AcceptResponse(result.Result);
+    }
+
+    private void V3AcceptResponse(string response)
+    {
+        DataDictionary d = V3Json(response,300000);
         if (d == null) { V3RequestFailed(false); return; }
         if (V3MaintenanceResponse(d) || V3WaitResponse(d)) return;
         int kind = v3RequestKind;
@@ -4152,7 +4191,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             accepted = (string.IsNullOrEmpty(v3RequestGeneration) || (generation == v3RequestGeneration && bank == v3RequestBank)) && V3RegisterManifest(d);
             if (accepted)
             {
-                if (V3Owner())
+                if (V3Owner() && !v4Protocol)
                 {
                     sharedGuideProtocol = v4Protocol ? 4 : 3;
                     v3SharedBaseGeneration = generation; v3SharedBaseBank = bank;
@@ -4163,8 +4202,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                         else { v3SharedRandomGeneration = generation; v3SharedRandomBank = bank; v3SharedRandomSet = 0; v3SharedRandomUsed = 1; }
                     }
                 }
-                accepted = v4Protocol ? V4StageBootstrap(d,result.Result) : V3ApplyBootstrap(result.Result);
-                if (accepted) { v3RecoveryBootstrap = false; if (V3Owner()) RequestSerialization(); }
+                accepted = v4Protocol ? V4StageBootstrap(d,response) : V3ApplyBootstrap(response);
+                if (accepted) { v3RecoveryBootstrap = false; if (V3Owner() && !v4Protocol) RequestSerialization(); }
             }
         }
         else if (kind == 2)
@@ -4172,6 +4211,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             accepted = V3RegisterManifest(d);
             if (accepted && v3DrawCategory >= 0 && V3Owner() && v3DrawOwnerTerm == v3OwnerTerm)
             {
+                if (v4Protocol && (Str(d,"generationId") != v3BaseGeneration || Str(d,"generationId") != v3SharedBaseGeneration))
+                {
+                    if (!V4StageBootstrap(d,response)) { V3RequestFailed(false); return; }
+                    v4RefreshCategory = v3DrawCategory; v4RefreshOwnerTerm = v3OwnerTerm;
+                    v3DrawCategory = -1; v3PendingJson = ""; v3AwaitCatalog = false; v3UserDraw = false;
+                    v3RequestKind = 0; v3RequestInFlight = false; v3RequestAttempts = 0;
+                    v3Version++; return;
+                }
                 v3TargetBank = Integer(d,"bank",-1); v3TargetGeneration = Str(d,"generationId");
                 v3LatestBank = v3TargetBank; v3LatestGeneration = v3TargetGeneration;
                 v3TargetSet = V3ChooseSet(v3DrawCategory,v3TargetGeneration);
@@ -4182,7 +4229,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         else if (kind == 3)
         {
             accepted = v3DrawCategory == v3RequestCategory && v3TargetGeneration == v3RequestGeneration && v3TargetBank == v3RequestBank && v3TargetSet == v3RequestSet && V3SetValid(d,v3RequestCategory,v3RequestBank,v3RequestGeneration,v3RequestSet);
-            if (accepted) v3PendingJson = result.Result;
+            if (accepted) { v3PendingJson = response; V4RememberSet(v3RequestGeneration,v3RequestCategory,v3RequestSet,response); }
         }
         else if (kind == 6)
         {
@@ -4191,9 +4238,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             bool registered = Integer(d,"bank",-1) == v3RequestBank && V3RegisterManifest(d);
             accepted = registered && Str(d,"generationId") == v3RequestGeneration;
         }
-        else if (kind == 7) { accepted = V4StatusValid(d); if (accepted) { v4PendingStatus = result.Result; v4PendingStatusAt = Time.realtimeSinceStartup+30f; } }
-        else if (kind == 4) accepted = V3LoadStatus(d,result.Result);
-        else if (kind == 5) accepted = V3ResumeStatus(d,result.Result);
+        else if (kind == 7) { accepted = V4StatusValid(d); if (accepted) { v4PendingStatus = response; v4PendingStatusAt = Time.realtimeSinceStartup+30f; } }
+        else if (kind == 4) accepted = V3LoadStatus(d,response);
+        else if (kind == 5) accepted = V3ResumeStatus(d,response);
         if (!accepted) { V3RequestFailed(false); return; }
         v3RequestKind = 0; v3RequestInFlight = false; v3RequestAttempts = 0;
         v3Version++; V4CommitBootstrap(); V3TryCommit();
@@ -4219,6 +4266,13 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool V3MaintenanceResponse(DataDictionary d)
     {
         if (d == null || Str(d,"schema") != "metarea-guide-maintenance-v1" || !Flag(d,"maintenance")) return false;
+        if (v4SnapshotActive)
+        {
+            v3ServerWaitUntil = Time.realtimeSinceStartup+Mathf.Clamp(Integer(d,"retryAfter",60),60,300)+Random.Range(0f,10f);
+            V3CancelRequest(); V4CancelRefresh();
+            if (v3DrawCategory >= 0) V3FailDraw("更新を待機しています");
+            loading = false; failed = false; v3Version++; return true;
+        }
         v3Maintenance = true;
         v3RequestKind = 0; v3RequestInFlight = false; v3RequestAttempts = 0;
         v3NextStatus = Time.realtimeSinceStartup + Mathf.Clamp(Integer(d,"retryAfter",60),60,300) + Random.Range(0f,10f);
@@ -4246,7 +4300,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (!ready) V3AdvanceClock(now);
         bool resuming = v3Maintenance;
         v3Maintenance = false; sponsorStatusLoading = false;
-        v3NextStatus = Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
+        v3NextStatus = v4SnapshotActive ? float.MaxValue : Time.realtimeSinceStartup + 60f + Random.Range(0f,10f);
         if (resuming)
         {
             v3BootstrapStopped = false; failed = false;
@@ -4266,7 +4320,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (Time.realtimeSinceStartup < v3JsonBusyUntil || (v3RecoveryPending && Time.realtimeSinceStartup < v3RecoveryAt)) return;
         if (v3Maintenance || Time.realtimeSinceStartup < v3ServerWaitUntil || Time.realtimeSinceStartup < v3DrawRetryAt) return;
-        if (!V3Owner() || !ready || category < 0 || category > 1 || v3DrawCategory >= 0 || V3SelectionPending(0) || V3SelectionPending(1) || SharedRemaining(sharedDrawBusyEnd) > 0 || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
+        if (!V3Owner() || !ready || category < 0 || category > 1 || v3DrawCategory >= 0 || v4PendingBank >= 0 || V3SelectionPending(0) || V3SelectionPending(1) || SharedRemaining(sharedDrawBusyEnd) > 0 || SharedRemaining(sharedDrawCooldownEnd) > 0) return;
         v3DrawCategory = category; v3UserDraw = true; v3AwaitCatalog = true;
         v3DrawRetryAt = Time.realtimeSinceStartup+15f;
         v3DrawOwnerTerm = v3OwnerTerm; v3DrawSequence = v3SelectionSequence;
@@ -4282,7 +4336,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             V3CancelRequest(); v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
             V4SelectProtocol(sharedGuideProtocol == 4); v3BootstrapStopped = false; v3NextStatus = 0;
         }
-        if (v3Maintenance) return;
+        if (v3Maintenance || v4PendingBank >= 0) return;
         if (!ready) return;
         if (v3DrawCategory >= 0)
         {
@@ -4387,8 +4441,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             v3Initialized = true;
             if (preferGuideV4) V4SelectProtocol(sharedGuideProtocol != 3);
-            v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.1f,.75f));
-            nextImageRequestAt = Mathf.Max(nextImageRequestAt,Time.realtimeSinceStartup+Random.Range(.1f,.75f));
+            v3NextStringAt = Mathf.Max(v3NextStringAt,Time.realtimeSinceStartup+Random.Range(.1f,3f));
+            nextImageRequestAt = Mathf.Max(nextImageRequestAt,Time.realtimeSinceStartup+Random.Range(.1f,3f));
             v3NextPrefetchAt = Time.realtimeSinceStartup+15f+Random.Range(0f,10f);
         }
         loading = !ready; v3Version++;
@@ -4432,14 +4486,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             { V3QueueRequest(5,sponsorStatusUrl,-1,"",-1,0); V3SendRequest(); }
             return;
         }
+        // A visible detail page keeps its own snapshot; do not repeatedly fetch
+        // and expire a replacement that cannot be committed yet.
+        if (v4SnapshotActive && !isSharedDataSource && (view == 2 || view == 3) && v4SeenRefreshSequence != v4SharedRefreshSequence) return;
         string expected = v3SharedBaseGeneration;
         if (expected != v3BootstrapAttemptGeneration)
         { v3BootstrapAttemptGeneration = expected; v3BootstrapStopped = false; }
-        if ((!ready || v3BaseGeneration != expected || v3RecoveryBootstrap) && !v3BootstrapStopped)
+        if ((!ready || (v4Protocol ? v4SeenRefreshSequence != v4SharedRefreshSequence : v3BaseGeneration != expected) || v3RecoveryBootstrap) && !v3BootstrapStopped)
         {
-            if (string.IsNullOrEmpty(expected) || v3RecoveryBootstrap)
+            if ((v4Protocol && !ready) || string.IsNullOrEmpty(expected) || v3RecoveryBootstrap)
             {
-                if (V3Owner()) V3QueueRequest(1,feedUrl,-1,"",-1,0);
+                if (v4Protocol && !ready) v4LocalBootstrap = true;
+                if (V3Owner() || (v4Protocol && !ready)) V3QueueRequest(1,feedUrl,-1,"",-1,0);
                 else if (Time.realtimeSinceStartup >= v3NextStatus) V3QueueRequest(5,sponsorStatusUrl,-1,"",-1,0);
             }
             else if (v3SharedBaseBank >= 0 && v3SharedBaseBank < 32 && v3ManifestUrls != null && v3ManifestUrls.Length == 32)
@@ -4447,7 +4505,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             V3SendRequest(); return;
         }
         if (!ready) return;
-        if (Time.realtimeSinceStartup >= v3NextStatus)
+        if (!v4SnapshotActive && Time.realtimeSinceStartup >= v3NextStatus)
         { V3QueueRequest(4,sponsorStatusUrl,-1,"",-1,0); V3SendRequest(); return; }
         if (v3DrawCategory >= 0)
         {
@@ -4455,6 +4513,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             else if (!V3BankUsable(v3TargetBank,v3TargetGeneration)) V3QueueRequest(6,v3ManifestUrls[v3TargetBank],v3TargetBank,v3TargetGeneration,v3DrawCategory,v3TargetSet);
             else if (string.IsNullOrEmpty(v3PendingJson) && v3SetUrls != null && v3SetUrls.Length == 768)
             {
+                if (V4TryCachedSet()) { V3TryCommit(); return; }
                 if (v3DrawCategory == 2)
                 { V3QueueRequest(3,v3LatestUrls[v3TargetBank],v3TargetBank,v3TargetGeneration,2,0); V3SendRequest(); return; }
                 int setIndex = v3TargetBank*24+(v3DrawCategory == 0 ? 0 : 8)+v3TargetSet;
@@ -4463,7 +4522,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             }
             V3SendRequest(); return;
         }
-        if (V3Owner() && Time.realtimeSinceStartup >= v3NextMigrationAttempt && v3LatestGeneration != "" && sponsorStatusValid)
+        if (!v4SnapshotActive && V3Owner() && Time.realtimeSinceStartup >= v3NextMigrationAttempt && v3LatestGeneration != "" && sponsorStatusValid)
         {
             if ((v4Layout || V3NearExpiry(v3BaseBank,v3BaseGeneration)) && v3BaseGeneration != v3LatestGeneration && !v3BootstrapStopped)
             {
@@ -4508,7 +4567,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (v4PendingBank >= 0) { V4CommitBootstrap(); V3PumpImages(); }
         if (ready)
         {
-            if (sponsorStatusValid && V3Now() >= v3StatusUntil) { sponsorStatusValid = false; sponsorStatusFailed = true; v3Version++; }
+            if (!v4SnapshotActive && sponsorStatusValid && V3Now() >= v3StatusUntil) { sponsorStatusValid = false; sponsorStatusFailed = true; v3Version++; }
             if (RefreshSponsorAvailability()) v3Version++;
             V3ReceiveSelection(); V3TryCommit();
             V3PumpImages();
@@ -4516,7 +4575,19 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         V3ScheduleMetadata();
         if (!v3Maintenance && Time.realtimeSinceStartup >= v3ServerWaitUntil && Time.realtimeSinceStartup >= v3JsonBusyUntil) { PumpAdClicks(); PumpStatistics(); }
-        if (!isSharedDataSource) { Render(); UpdateLoadingIndicators(); UpdateDrawUi(); V4UpdateUi(); QueueBoardReady(); }
+        if (!isSharedDataSource)
+        {
+            if (v4RenderedVersion != v3Version) { v4RenderedVersion = v3Version; Render(); }
+            UpdateLoadingIndicators(); UpdateDrawUi(); RenderFavorites(); V4UpdateUi(); QueueBoardReady();
+            if (portalButton != null)
+            {
+                int wait = Mathf.CeilToInt(PortalWait());
+                portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
+                adPortalButton.interactable = ready && wait == 0 && view == 3 && TopPortalAvailable();
+                portalButtonLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL\nこの世界へ";
+                adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL  この世界へ";
+            }
+        }
     }
 
     private void V3Pull()
@@ -4529,13 +4600,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         v3RecoveryPending = source.v3RecoveryPending; v3RecoveryAt = source.v3RecoveryAt;
         if (!source.ready) { loading = source.loading; failed = source.failed; Render(); return; }
         bool detailOpen = view == 2 || view == 3 || (view == 3 && beforeAdView == 2);
+        if (ready && detailOpen && v3Bootstrap != source.v3Bootstrap) return;
         if (v3Bootstrap != source.v3Bootstrap && !(ready && detailOpen))
         {
             v3SharedRecommendedGeneration = source.v3SharedRecommendedGeneration;
             v3SharedRandomGeneration = source.v3SharedRandomGeneration;
             v3SharedRecommendedBank = source.v3SharedRecommendedBank; v3SharedRandomBank = source.v3SharedRandomBank;
             v3SharedRecommendedSet = source.v3SharedRecommendedSet; v3SharedRandomSet = source.v3SharedRandomSet;
-            if (!V3ApplyBootstrap(source.v3Bootstrap)) return;
+            v4CopyingSnapshot = true;
+            bool applied = V3ApplyBootstrap(source.v3Bootstrap);
+            v4CopyingSnapshot = false;
+            if (!applied) return;
         }
         bool changed = maintenanceChanged || v3DisplayVersion != source.v3Version;
         v3DisplayVersion = source.v3Version;
@@ -4549,10 +4624,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (appliedSponsorStatusVersion != source.sponsorStatusVersion)
         {
             DataDictionary status = V3Json(source.sponsorStatusJson,300000);
+            v4CopyingSnapshot = true;
             if (status != null) V3LoadStatus(status,source.sponsorStatusJson);
+            v4CopyingSnapshot = false;
             appliedSponsorStatusVersion = source.sponsorStatusVersion; changed = true;
         }
         sponsorStatusValid = source.sponsorStatusValid; sponsorStatusFailed = source.sponsorStatusFailed;
+        v4SnapshotActive = source.v4SnapshotActive; v4DisplayTime = source.v4DisplayTime;
+        v3NextStatus = source.v3NextStatus;
         if (v3BaseGeneration == source.v3BaseGeneration) v4TopReady = source.v4TopReady;
         sponsorStatusUtc = source.sponsorStatusUtc; sponsorStatusReceived = source.sponsorStatusReceived;
         if (RefreshSponsorAvailability()) changed = true;
@@ -4566,7 +4645,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             if (drawErrors[c] != source.drawErrors[c]) { drawErrors[c] = source.drawErrors[c]; changed = true; }
             string json = source.v3LocalDrawJson[c];
-            if (string.IsNullOrEmpty(json) || v3LocalDrawJson[c] == json) continue;
+            if (v3BaseGeneration != source.v3BaseGeneration || string.IsNullOrEmpty(json) || v3LocalDrawJson[c] == json) continue;
             int start = 64+c*64;
             if ((view == 2 || (view == 3 && beforeAdView == 2)) && selected >= start && selected < start+64) continue;
             DataDictionary d = V3Json(json,100000);
@@ -4713,6 +4792,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         v4PendingBootstrap = json; v4PendingBank = bank; v4PendingGeneration = generation;
         v4PendingUntil = Number(d,"validUntil"); v4PendingStatus = ""; v4PendingStatusAt = 0;
+        v4PendingRefreshSequence = v4SharedRefreshSequence;
         loading = !ready; failed = false; return true;
     }
 
@@ -4741,23 +4821,89 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void V4CommitBootstrap()
     {
         if (v4PendingBank < 0 || v3Maintenance) return;
-        if ((!string.IsNullOrEmpty(v3SharedBaseGeneration) && (v3SharedBaseGeneration != v4PendingGeneration || v3SharedBaseBank != v4PendingBank)) || V3Now() >= v4PendingUntil)
+        if (v4RefreshCategory >= 0 && (!V3Owner() || v4RefreshOwnerTerm != v3OwnerTerm))
+        { V4CancelRefresh(); return; }
+        bool sharedChange = ready && v4RefreshCategory < 0 && !v4LocalBootstrap &&
+            (v4PendingRefreshSequence != v4SharedRefreshSequence || v3SharedBaseGeneration != v4PendingGeneration || v3SharedBaseBank != v4PendingBank);
+        if (sharedChange || V3Now() >= v4PendingUntil)
         {
-            v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
-            v3BootstrapStopped = false; v3RecoveryBootstrap = true; return;
+            V4CancelRefresh(); v3BootstrapStopped = false;
+            if (!ready) V3ArmRecovery();
+            return;
         }
         if (!V3BankUsable(v4PendingBank,v4PendingGeneration)) return;
-        if (V3Texture(v4PendingBank,v4PendingGeneration,0) == null) return;
+        if (V3Texture(v4PendingBank,v4PendingGeneration,0) == null)
+        {
+            if (v3ImageAttempts[v4PendingBank*32] >= 4) { V4CancelRefresh(); V3ArmRecovery(); }
+            return;
+        }
         DataDictionary status = V3Json(v4PendingStatus,300000);
         if (!V4StatusValid(status)) { v4PendingStatus = ""; return; }
         if (!isSharedDataSource && ready && (view == 2 || view == 3)) return;
         string json = v4PendingBootstrap, statusJson = v4PendingStatus;
-        if (!V3ApplyBootstrap(json)) return;
+        bool explicitRefresh = v4RefreshCategory >= 0;
+        string oldRecommended = v3SharedRecommendedGeneration, oldRandom = v3SharedRandomGeneration;
+        int oldRecommendedBank = v3SharedRecommendedBank, oldRandomBank = v3SharedRandomBank;
+        int oldRecommendedSet = v3SharedRecommendedSet, oldRandomSet = v3SharedRandomSet;
+        bool publish = V3Owner() && (explicitRefresh || string.IsNullOrEmpty(v3SharedBaseGeneration));
+        if (publish)
+        {
+            v3SharedRecommendedGeneration = v4PendingGeneration; v3SharedRecommendedBank = v4PendingBank; v3SharedRecommendedSet = 0;
+            v3SharedRandomGeneration = v4PendingGeneration; v3SharedRandomBank = v4PendingBank; v3SharedRandomSet = 0;
+        }
+        if (!V3ApplyBootstrap(json))
+        {
+            v3SharedRecommendedGeneration = oldRecommended; v3SharedRandomGeneration = oldRandom;
+            v3SharedRecommendedBank = oldRecommendedBank; v3SharedRandomBank = oldRandomBank;
+            v3SharedRecommendedSet = oldRecommendedSet; v3SharedRandomSet = oldRandomSet;
+            return;
+        }
         if (!V3LoadStatus(status,statusJson)) return;
+        v4SnapshotActive = true; v3NextStatus = float.MaxValue;
+        if (publish)
+        {
+            sharedGuideProtocol = 4; v3SharedBaseGeneration = v3BaseGeneration; v3SharedBaseBank = v3BaseBank;
+            v3SharedRecommendedUsed = 1; v3SharedRandomUsed = 1;
+            if (explicitRefresh) { v4SharedRefreshSequence++; v3SelectionSequence++; }
+            sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0; sharedDrawCooldownEnd = TimeNow()+15;
+        }
+        v4SeenRefreshSequence = v4SharedRefreshSequence;
         v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
+        v4RefreshCategory = -1; v4LocalBootstrap = false;
         v4TopReady = true; v3RecoveryBootstrap = false;
         RefreshSponsorAvailability(); if (v3AdRotation == 0) V4AdvanceSponsors(); v3Version++;
         if (V3Owner()) RequestSerialization();
+    }
+
+    private void V4CancelRefresh()
+    {
+        if (v4RefreshCategory >= 0 && V3Owner())
+        { sharedDrawBusyTab = -1; sharedDrawBusyEnd = 0; RequestSerialization(); }
+        v4RefreshCategory = -1; v4PendingBank = -1; v4PendingBootstrap = ""; v4PendingStatus = "";
+        loading = !ready; v3Version++;
+    }
+
+    private void V4RememberSet(string generation, int category, int set, string json)
+    {
+        if (!v4Protocol || string.IsNullOrEmpty(json) || json.Length > 100000) return;
+        string key = generation+":"+category+":"+set;
+        for (int i=0;i<v4SetCacheKeys.Length;i++) if (v4SetCacheKeys[i] == key) { v4SetCacheJson[i] = json; return; }
+        v4SetCacheKeys[v4SetCacheCursor] = key; v4SetCacheJson[v4SetCacheCursor] = json;
+        v4SetCacheCursor = (v4SetCacheCursor+1)%v4SetCacheKeys.Length;
+    }
+
+    private bool V4TryCachedSet()
+    {
+        if (!v4Protocol || !string.IsNullOrEmpty(v3PendingJson) || !V3BankUsable(v3TargetBank,v3TargetGeneration)) return false;
+        string key = v3TargetGeneration+":"+v3DrawCategory+":"+v3TargetSet;
+        for (int i=0;i<v4SetCacheKeys.Length;i++)
+        {
+            if (v4SetCacheKeys[i] != key) continue;
+            DataDictionary d = V3Json(v4SetCacheJson[i],100000);
+            if (!V3SetValid(d,v3DrawCategory,v3TargetBank,v3TargetGeneration,v3TargetSet)) return false;
+            v3PendingJson = v4SetCacheJson[i]; return true;
+        }
+        return false;
     }
 
     private bool V4Loaded(DataDictionary reference)
