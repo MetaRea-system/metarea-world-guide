@@ -50,7 +50,7 @@ public static class MetaReaOnlineSetup
         return cachedPortalClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.19.0";
+    public const string GuideVersion = "0.20.0";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,
@@ -159,6 +159,7 @@ public static class MetaReaOnlineSetup
         guide.preferGuideV4 = true;
         guide.v4FeedUrl = new VRCUrl("https://metarea.net/api/udon/guide-v4/current.json?version=" + GuideVersion);
         guide.v4StatusUrl = new VRCUrl("https://metarea.net/api/udon/guide-v4/status.json");
+        guide.posterManifestUrls = new VRCUrl[32];guide.posterImageUrls = new VRCUrl[128];
         guide.v4ManifestUrls = new VRCUrl[32]; guide.v4LatestUrls = new VRCUrl[32];
         guide.v4SetUrls = new VRCUrl[768]; guide.v4ImageUrls = new VRCUrl[1024];
         const string root = "https://metarea.net/api/udon/guide-v3/";
@@ -168,6 +169,9 @@ public static class MetaReaOnlineSetup
         guide.v3ImageUrls = new VRCUrl[32*32];
         for (int bank=0; bank<32; bank++)
         {
+            string posters="https://metarea.net/api/udon/guide-posters-v1/banks/"+bank+"/";
+            guide.posterManifestUrls[bank]=new VRCUrl(posters+"manifest.json");
+            for(int sheet=0;sheet<4;sheet++)guide.posterImageUrls[bank*4+sheet]=new VRCUrl(posters+"sheets/"+sheet+".png");
             string prefix=root+"banks/"+bank+"/";
             string v4 = "https://metarea.net/api/udon/guide-v4/banks/"+bank+"/";
             guide.v4ManifestUrls[bank] = new VRCUrl(v4+"manifest.json");

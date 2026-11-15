@@ -778,7 +778,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private string[] v4SetCacheJson = new string[24];
     private int v4SetCacheCursor;
     private int v4RenderedVersion = -1;
-    private string[] v4PrefetchedTokens = new string[1024];
+    private string[] v4PrefetchedTokens = new string[1152];
 
     [HideInInspector] public VRCUrl[] v3ManifestUrls;
     [HideInInspector] public VRCUrl[] v3SetUrls;
@@ -823,12 +823,25 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     // There are only 32 possible image locations per bank. Definitions do not
     // allocate textures. The resident GPU cache has an independent hard limit.
-    private DataDictionary[] v3Assets = new DataDictionary[1024];
-    private string[] v3AssetGenerations = new string[1024];
-    private int[] v3ImageAttempts = new int[1024];
-    private float[] v3ImageRetryAt = new float[1024];
+    private DataDictionary[] v3Assets = new DataDictionary[1152];
+    private string[] v3AssetGenerations = new string[1152];
+    private int[] v3ImageAttempts = new int[1152];
+    private float[] v3ImageRetryAt = new float[1152];
     private string[] v3BankGenerations = new string[32];
     private double[] v3BankExpiry = new double[32];
+    [HideInInspector] public VRCUrl[] posterManifestUrls;
+    [HideInInspector] public VRCUrl[] posterImageUrls;
+    [HideInInspector] public GameObject posterOverlay;
+    [HideInInspector] public TMP_Text posterUrlText;
+    private string[] posterGenerations = new string[32];
+    private DataDictionary[] posterManifests = new DataDictionary[32];
+    private int[] posterStates = new int[32]; // unknown, ready, unsupported, retry, expired
+    private double[] posterValidUntil = new double[32];
+    private double[] posterExpires = new double[32];
+    private float[] posterNextAttempt = new float[32];
+    private string[] posterExternalUrls = new string[16];
+    private bool[] posterExternalKnown = new bool[16];
+    private string[] v3CacheScopes = new string[12];
     private string[] v3CacheTokens = new string[12];
     private Texture2D[] v3CacheTextures = new Texture2D[12];
     private IVRCImageDownload[] v3CacheDownloads = new IVRCImageDownload[12];
@@ -1108,7 +1121,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (IsAdClickResponse(result.Url.Get())) return;
         if (IsStatisticsUrl(result.Url.Get())) return;
         if (guideV3 && onlineMode)
-        { if (V3TakeStringResponse(result.Url.Get())) V3RequestFailed(false); return; }
+        { if (V3TakeStringResponse(result.Url.Get())) { if(v3RequestKind==8)PosterStringError(result.ErrorCode,result.Result);else V3RequestFailed(false); } return; }
         if (IsDrawMetadataUrl(result.Url.Get()))
         {
             if (drawLoadingMetadata && pendingDrawTab >= 0 && result.Url.Get() == DrawUrl(pendingDrawTab).Get())
@@ -1397,6 +1410,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private bool TopPortalAvailable()
     {
+        if(posterOverlay!=null && view==3 && !PosterDisplayAllowed(openedAd))return false;
         if (openedTop < 0) return IsAdActive(openedAd) && adPortalEnabled[openedAd] && CanUseWorld(adWorlds[openedAd]);
         return topPlacementProtocol && IsTopActive(openedTop) && (topTypes[openedTop] == 2 || (v4Layout && topTypes[openedTop] == 0)) && topAds[openedTop] == openedAd && CanUseWorld(topWorlds[openedTop]);
     }
@@ -2749,13 +2763,14 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
         adPortalButton.interactable = ready && wait == 0 && (onlineMode ? view == 3 && TopPortalAvailable() : adWorld >= 0);
         portalButtonLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL\nこの世界へ";
-        adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL  この世界へ";
+        adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : (posterOverlay!=null?"ポータルを出す":"PORTAL  この世界へ");
     }
 
     private void Render()
     {
         if (isSharedDataSource) return;
         topPanel.SetActive(view == 0); listPanel.SetActive(view == 1); detailPanel.SetActive(view == 2); adPanel.SetActive(view == 3);
+        if(posterOverlay!=null)posterOverlay.SetActive(view==3);
         for (int i = 0; i < navImages.Length; i++) navImages[i].color = i == (favoriteTabSelected ? 4 : tab) ? selectedTabColor : cardColor;
         retryButton.gameObject.SetActive((!ready && !loading) || (ready && ((imageFailed && !imageLoading) || (sponsorImageFailed && !sponsorImageLoading) || sponsorStatusFailed || ExtraSponsorImagesFailed())));
         statusLabel.text = loading ? "読み込み中…" : failed ? "情報を取得できません。URL許可を確認して再試行。" : ready ? (imageLoading || sponsorImageLoading || ExtraSponsorImagesLoading() ? "写真を読み込んでいます…" : imageFailed || sponsorImageFailed || ExtraSponsorImagesFailed() ? "写真を取得できません。URL許可を確認して再試行。" : onlineMode ? "入室時の情報を表示しています" : "サンプル表示") : "初期データを待っています…";
@@ -2829,6 +2844,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (sampleAdDetail != null) { adPicture.texture = sampleAdDetail; adPicture.uvRect = new Rect(0, 0, 1, 1); adPicture.color = Color.white; }
         }
         RenderSponsors();
+        RenderPoster();
         UpdateDrawUi();
         RenderFavorites();
         RenderMaintenance();
@@ -3391,6 +3407,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool V3RequestContextValid()
     {
         int kind = v3RequestKind;
+        if(kind==8)return V3BankUsable(v3RequestBank,v3RequestGeneration);
         if (kind == 1)
         {
             if (v4Protocol && !ready) return true;
@@ -3615,6 +3632,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         v4TopUsed = 0; v4BannerUsed = 0; v4LastTop = -1; v4LastBanner = -1;
         v4FirstTopCycle = true; v4FirstBannerCycle = true;
         v4PreviewImages = new DataDictionary[16];
+        posterExternalUrls=new string[16];posterExternalKnown=new bool[16];
         v3Bootstrap = json; v3BaseBank = bank; v3BaseGeneration = generation;
         v3InitialWorldCount = 0; v3LatestJson = ""; v3LatestComplete = false; v3LatestFailed = false;
         DataList worlds = V3List(d,"worlds");
@@ -3632,6 +3650,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 v3BannerImages[j] = V3Object(a,"bannerImage"); v3QrImages[j] = V3Object(a,"qrImage");
                 v3DetailImages[j] = V3Object(a,"detailImage"); v3TopImages[j] = V3Object(a,v4Layout ? "cardImage" : "topImage");
                 v4PreviewImages[j] = V3Object(a,"previewImage");
+                DataToken external;
+                posterExternalKnown[j]=a.TryGetValue("externalUrl",TokenType.String,out external);
+                posterExternalUrls[j]=posterExternalKnown[j]?external.String:"";
                 if (!V3RefValid(v4PreviewImages[j],bank,generation)) v4PreviewImages[j] = null;
                 if (!V3RefValid(v3BannerImages[j],bank,generation)) v3BannerImages[j] = null;
                 if (!V3RefValid(v3QrImages[j],bank,generation)) v3QrImages[j] = null;
@@ -3691,17 +3712,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private int V3CacheSlot(string token)
     {
         if (!V3Hex(token)) return -1;
-        for (int i = 0; i < v3CacheTokens.Length; i++) if (v3CacheTokens[i] == token && v3CacheTextures[i] != null) return i;
+        for (int i = 0; i < v3CacheTokens.Length; i++) if (string.IsNullOrEmpty(v3CacheScopes[i]) && v3CacheTokens[i] == token && v3CacheTextures[i] != null) return i;
         return -1;
     }
 
     private Texture2D V3Texture(int bank, string generation, int asset)
     {
         if (sharedDataSource != null && sharedDataSource != this) return sharedDataSource.V3Texture(bank,generation,asset);
-        if (bank < 0 || bank >= 32 || asset < 0 || asset > 31) return null;
-        int key = bank * 32 + asset;
+        if (bank < 0 || bank >= 32 || asset < 0 || asset > 35) return null;
+        int key = ImageKey(bank,asset);
         if (v3AssetGenerations[key] != generation || v3Assets[key] == null) return null;
-        int slot = V3CacheSlot(Str(v3Assets[key],"imageToken"));
+        int slot = ImageCacheSlot(key);
         if (slot < 0) return null;
         v3CacheUsed[slot] = Time.realtimeSinceStartup;
         return v3CacheTextures[slot];
@@ -3797,6 +3818,10 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         // Let displays pull a newly committed image before another demand can
         // replace it. Active UI references remain pinned after this grace time.
         if (Time.realtimeSinceStartup-v3CacheUsed[slot] < 1f) return true;
+        Texture texture = v3CacheTextures[slot];
+        if (V3VisibleImage(adPicture,texture)) return true;
+        if (sharedDisplays != null) for (int j=0;j<sharedDisplays.Length;j++)
+            if(sharedDisplays[j]!=null && sharedDisplays[j].V3VisibleImage(sharedDisplays[j].adPicture,texture))return true;
         string token = v3CacheTokens[slot];
         if (V3DisplayUses(token)) return true;
         if (sharedDisplays != null) for (int i = 0; i < sharedDisplays.Length; i++)
@@ -3824,7 +3849,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (slot < 0 || slot >= v3CacheTextures.Length) return;
         if (v3CacheDownloads[slot] != null) v3CacheDownloads[slot].Dispose();
         residentImageBytes = Mathf.Max(0,residentImageBytes-v3CacheSizes[slot]);
-        v3CacheSizes[slot] = 0; v3CacheTokens[slot] = "";
+        v3CacheSizes[slot] = 0; v3CacheTokens[slot] = ""; v3CacheScopes[slot] = "";
         v3CacheTextures[slot] = null; v3CacheDownloads[slot] = null;
         imageEvictionCount++;
     }
@@ -3849,14 +3874,18 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private bool V3WantImage(int bank, string generation, int id)
     {
         if (v3ImageKey >= 0 || imageRequestInFlight || v3Verifying || v3ReadbackPending || Time.realtimeSinceStartup < nextImageRequestAt || Time.realtimeSinceStartup < v3ServerWaitUntil) return false;
-        if (!V3BankUsable(bank,generation) || id < 0 || id > 31) return false;
-        int key = bank*32+id;
+        if (!V3BankUsable(bank,generation) || id < 0 || id > 35) return false;
+        int key = ImageKey(bank,id);
+        if(key>=1024 && !PosterFresh(bank,generation))return false;
+        if(key>=1024 && v3ImageAttempts[key]>=4 && Time.realtimeSinceStartup>=v3ImageRetryAt[key])v3ImageAttempts[key]=0;
         DataDictionary a = v3Assets[key];
         // Prefetch each verified image once per token. Eviction is not a reason
         // to download the whole catalogue again; visible demand still reloads.
         if (a != null && v3PassiveImages && v4PrefetchedTokens[key] == Str(a,"imageToken")) return false;
-        if (a == null || v3AssetGenerations[key] != generation || V3CacheSlot(Str(a,"imageToken")) >= 0 || v3ImageAttempts[key] >= 4 || Time.realtimeSinceStartup < v3ImageRetryAt[key]) return false;
-        if (v3ImageUrls == null || key >= v3ImageUrls.Length || (v3ImageUrls[key] == null || string.IsNullOrEmpty(v3ImageUrls[key].Get())) || V3FreeCacheSlot() < 0) return false;
+        if (a == null || v3AssetGenerations[key] != generation || ImageCacheSlot(key) >= 0 || v3ImageAttempts[key] >= 4 || Time.realtimeSinceStartup < v3ImageRetryAt[key]) return false;
+        VRCUrl imageUrl = key < 1024 ? (v3ImageUrls != null && key < v3ImageUrls.Length ? v3ImageUrls[key] : null) :
+            (posterImageUrls != null && key-1024 < posterImageUrls.Length ? posterImageUrls[key-1024] : null);
+        if(imageUrl == null || string.IsNullOrEmpty(imageUrl.Get()) || V3FreeCacheSlot()<0)return false;
         int reserved = Integer(a,"width",0)*Integer(a,"height",0)*4;
         if (!V3EnsureImageRoom(reserved,!v3PassiveImages)) return false;
         v3ReservedBytes = reserved;
@@ -3867,7 +3896,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         TextureInfo info = new TextureInfo(); info.GenerateMipMaps = false; info.FilterMode = FilterMode.Bilinear;
         info.WrapModeU = TextureWrapMode.Clamp; info.WrapModeV = TextureWrapMode.Clamp;
         MarkImageRequest();
-        v3ImageDownload = imageDownloader.DownloadImage(v3ImageUrls[key],null,(IUdonEventReceiver)this,info);
+        v3ImageDownload = imageDownloader.DownloadImage(imageUrl,null,(IUdonEventReceiver)this,info);
         return true;
     }
 
@@ -3889,6 +3918,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             if (display.view == 3 && display.openedAd >= 0 && display.openedAd < display.adCount)
             {
                 int ad = display.openedAd;
+                if(display.v4Protocol && display.posterOverlay!=null)return PosterWantDisplay(display);
                 if (V3WantRef(display.v3DetailImages[ad],display.v3BaseBank,display.v3BaseGeneration)) return true;
                 if (V3WantRef(display.v3QrImages[ad],display.v3BaseBank,display.v3BaseGeneration)) return true;
             }
@@ -3972,7 +4002,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (key >= 0)
         {
             v3ImageRetryAt[key] = Time.realtimeSinceStartup + V3Backoff(v3ImageAttempts[key]);
-            if (v3ImageAttempts[key] >= 4) { v3ManualRetryAt = Mathf.Max(v3ManualRetryAt,Time.realtimeSinceStartup+60f); V3ArmRecovery(); }
+            if (key>=1024 && v3ImageAttempts[key]>=4) v3ImageRetryAt[key]=Time.realtimeSinceStartup+60f;
+            if (key<1024 && v3ImageAttempts[key] >= 4) { v3ManualRetryAt = Mathf.Max(v3ManualRetryAt,Time.realtimeSinceStartup+60f); V3ArmRecovery(); }
             if (key == v3BaseBank*32 && v3ImageAttempts[key] >= 4) { imageFailed = true; imageLoading = false; }
         }
         v3Version++;
@@ -3982,7 +4013,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         if (result != v3ImageDownload || v3ImageKey < 0) { result.Dispose(); return; }
         DataDictionary a = v3Assets[v3ImageKey];
-        if (result.Result == null || a == null || result.Result.width != Integer(a,"width",0) || result.Result.height != Integer(a,"height",0) || Str(a,"imageToken") != v3ImageToken || v3AssetGenerations[v3ImageKey] != v3ImageGeneration || !V3BankUsable(v3ImageKey/32,v3ImageGeneration))
+        if (result.Result == null || a == null || result.Result.width != Integer(a,"width",0) || result.Result.height != Integer(a,"height",0) || Str(a,"imageToken") != v3ImageToken || v3AssetGenerations[v3ImageKey] != v3ImageGeneration || !V3BankUsable(ImageBank(v3ImageKey),v3ImageGeneration))
         { imageVerificationFailures++; V3ImageFailed(); return; }
         int actual = result.SizeInMemoryBytes;
         if (actual <= 0 || actual > v3ReservedBytes || residentImageBytes > v3MemoryLimit-actual)
@@ -4000,7 +4031,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         v3ReadbackPending = false;
         if (!v3Verifying || v3ImageKey < 0) return;
         if (request.hasError || !request.TryGetData(v3MarkerPixels)) { imageVerificationFailures++; V3ImageFailed(); return; }
-        if (v3AssetGenerations[v3ImageKey] != v3ImageGeneration || !V3BankUsable(v3ImageKey/32,v3ImageGeneration)) { staleResponseCount++; V3ImageFailed(); return; }
+        if (v3AssetGenerations[v3ImageKey] != v3ImageGeneration || !V3BankUsable(ImageBank(v3ImageKey),v3ImageGeneration)) { staleResponseCount++; V3ImageFailed(); return; }
         int cell = v3MarkerPixels.Length/64;
         for (int digit = 0; digit < 16; digit++)
         {
@@ -4018,6 +4049,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (v3CacheTextures[slot] != null) V3Evict(slot);
         v3CacheSizes[slot] = v3ReservedBytes; residentImageBytes += v3ReservedBytes; v3ReservedBytes = 0;
         v4PrefetchedTokens[v3ImageKey] = v3ImageToken;
+        v3CacheScopes[slot] = v3ImageKey>=1024 ? PosterScope(v3ImageKey) : "";
         v3CacheTokens[slot] = v3ImageToken; v3CacheTextures[slot] = v3ImageTexture;
         v3CacheDownloads[slot] = v3ImageDownload; v3CacheUsed[slot] = Time.realtimeSinceStartup;
         // A later cache eviction starts a new transaction, not the fifth retry
@@ -4048,7 +4080,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if (v3RecoveryPending && Time.realtimeSinceStartup < v3RecoveryAt) return;
         if (v3RequestKind == 0 || v3RequestInFlight || Time.realtimeSinceStartup < v3RequestRetryAt || Time.realtimeSinceStartup < v3NextStringAt || Time.realtimeSinceStartup < v3ServerWaitUntil || Time.realtimeSinceStartup < v3JsonBusyUntil) return;
         if (Time.realtimeSinceStartup-v3RequestQueuedAt > 300f) { V3RequestFailed(true); return; }
-        if (!V3RequestContextValid()) { V3CancelRequest(); V3FailDraw("共有結果が更新されました。新しい結果を取得します"); return; }
+        if (!V3RequestContextValid()) { if(v3RequestKind==8){V3CancelRequest();return;} V3CancelRequest(); V3FailDraw("共有結果が更新されました。新しい結果を取得します"); return; }
         if ((v3RequestKind == 3) && !V3BankUsable(v3RequestBank,v3RequestGeneration)) { V3RequestFailed(true); return; }
         if (!V3TrackStringRequest(v3RequestUrl.Get())) return;
         v3RequestInFlight = true; v3RequestStarted = Time.realtimeSinceStartup;
@@ -4061,6 +4093,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void V3RequestFailed(bool terminal)
     {
+        if(v3RequestKind==8){PosterRequestFailed(terminal);return;}
         if (!v4TopReady) initialRequestFailed = true;
         int kind = v3RequestKind;
         V3AbandonStringRequest();
@@ -4174,7 +4207,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private void V3StringSuccess(IVRCStringDownload result)
     {
         if (!V3TakeStringResponse(result.Url.Get())) return;
-        if (!V3RequestContextValid()) { staleResponseCount++; V3CancelRequest(); V3FailDraw("共有結果が更新されました。新しい結果を取得します"); return; }
+        if (!V3RequestContextValid()) { staleResponseCount++; if(v3RequestKind==8){V3CancelRequest();return;} V3CancelRequest(); V3FailDraw("共有結果が更新されました。新しい結果を取得します"); return; }
         V3AcceptResponse(result.Result);
     }
 
@@ -4182,6 +4215,12 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     {
         DataDictionary d = V3Json(response,300000);
         if (d == null) { V3RequestFailed(false); return; }
+        if(v3RequestKind==8)
+        {
+            if(PosterManifest(d,v3RequestBank,v3RequestGeneration) || PosterStateResponse(d,v3RequestBank,v3RequestGeneration))
+            {v3RequestKind=0;v3RequestInFlight=false;v3RequestAttempts=0;v3Version++;return;}
+            PosterRequestFailed(false);return;
+        }
         if (V3MaintenanceResponse(d) || V3WaitResponse(d)) return;
         int kind = v3RequestKind;
         bool accepted = false;
@@ -4486,6 +4525,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             { V3QueueRequest(5,sponsorStatusUrl,-1,"",-1,0); V3SendRequest(); }
             return;
         }
+        if(PosterSchedule()){V3SendRequest();return;}
         // A visible detail page keeps its own snapshot; do not repeatedly fetch
         // and expire a replacement that cannot be committed yet.
         if (v4SnapshotActive && !isSharedDataSource && (view == 2 || view == 3) && v4SeenRefreshSequence != v4SharedRefreshSequence) return;
@@ -4549,7 +4589,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
                 adPortalButton.interactable = ready && wait == 0 && view == 3 && TopPortalAvailable();
                 portalButtonLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL\nこの世界へ";
-                adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL  この世界へ";
+                adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : (posterOverlay!=null?"ポータルを出す":"PORTAL  この世界へ");
             }
             return;
         }
@@ -4585,7 +4625,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 portalButton.interactable = ready && CanUseWorld(selected) && (!sponsoredDetail || IsSponsoredWorldActive(selected)) && wait == 0;
                 adPortalButton.interactable = ready && wait == 0 && view == 3 && TopPortalAvailable();
                 portalButtonLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL\nこの世界へ";
-                adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : "PORTAL  この世界へ";
+                adPortalLabel.text = wait > 0 ? "あと " + wait + " 秒" : (posterOverlay!=null?"ポータルを出す":"PORTAL  この世界へ");
             }
         }
     }
@@ -5014,10 +5054,276 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             adQrStatus.text = detail ? V4DownloadLabel(v3QrImages[openedAd],"QR").Replace("DL","読込") : "";
         }
         if (v4Layout && currentAd < 0 && activeAdCount > 0) SetPlaceholder(bannerPicture,0);
+        RenderPoster();
+    }
+
+    // Posters use an independent manifest/URL namespace, but the same bounded
+    // image queue, readback verification and resident texture cache as worlds.
+    private int PosterImageKey(int bank, int sheet) { return 1024 + bank * 4 + sheet; }
+    private int ImageBank(int key) { return key < 1024 ? key / 32 : (key - 1024) / 4; }
+    private int ImageKey(int bank, int asset) { return asset < 32 ? bank * 32 + asset : PosterImageKey(bank, asset - 32); }
+    private string PosterScope(int key)
+    { return "poster:" + v3AssetGenerations[key] + ":" + Str(v3Assets[key], "imageToken"); }
+    private int ImageCacheSlot(int key)
+    {
+        if (key < 0 || key >= v3Assets.Length || v3Assets[key] == null) return -1;
+        if (key < 1024) return V3CacheSlot(Str(v3Assets[key], "imageToken"));
+        string scope = PosterScope(key);
+        for (int i = 0; i < v3CacheScopes.Length; i++)
+            if (v3CacheScopes[i] == scope && v3CacheTextures[i] != null) return i;
+        return -1;
+    }
+
+    private MetaReaWallGuide PosterSource()
+    { return sharedDataSource != null && sharedDataSource != this ? sharedDataSource : this; }
+    private bool PosterGeneration(int bank, string generation)
+    { return bank >= 0 && bank < 32 && posterGenerations[bank] == generation; }
+    private bool PosterFresh(int bank, string generation)
+    {
+        if (!PosterGeneration(bank, generation) || posterManifests[bank] == null || posterStates[bank] == 4) return false;
+        double now = V3Now(), expiry = posterExpires[bank];
+        return V3BankUsable(bank, generation) && now < posterValidUntil[bank] && (expiry == 0 || now < expiry);
+    }
+    private DataDictionary PosterEntry(int bank, string generation, string adId, string contentKey)
+    {
+        if (!PosterGeneration(bank, generation) || posterManifests[bank] == null) return null;
+        DataList ads = V3List(posterManifests[bank], "ads");
+        for (int i = 0; ads != null && i < ads.Count; i++)
+        {
+            DataDictionary ad = ads[i].DataDictionary;
+            if (Str(ad, "adId") == adId && Str(ad, "contentKey") == contentKey) return ad;
+        }
+        return null;
+    }
+    private DataDictionary CurrentPoster(int ad)
+    {
+        if (ad < 0 || ad >= adCount || !v4Protocol) return null;
+        return PosterSource().PosterEntry(v3BaseBank, v3BaseGeneration, adIds[ad], adKeys[ad]);
+    }
+    private bool PosterDisplayAllowed(int ad)
+    {
+        if (!onlineMode || !guideV3 || !v4Protocol) return true;
+        if (ad < 0 || ad >= adCount || !IsAdActive(ad)) return false;
+        MetaReaWallGuide source = PosterSource();
+        if (!source.V3BankUsable(v3BaseBank, v3BaseGeneration)) return false;
+        if (!source.PosterGeneration(v3BaseBank, v3BaseGeneration)) return true; // old server/first request: legacy preview
+        if (source.posterStates[v3BaseBank] == 4) return false;
+        if (source.posterManifests[v3BaseBank] == null) return true; // unsupported server retains legacy behavior
+        return source.PosterFresh(v3BaseBank, v3BaseGeneration) && CurrentPoster(ad) != null;
+    }
+    private bool PosterSupported(int bank, string generation)
+    { return PosterGeneration(bank, generation) && posterManifests[bank] != null; }
+
+    private void PosterResetGeneration(int bank, string generation)
+    {
+        if (PosterGeneration(bank, generation)) return;
+        posterGenerations[bank] = generation; posterStates[bank] = 0; posterManifests[bank] = null;
+        posterValidUntil[bank] = 0; posterExpires[bank] = 0; posterNextAttempt[bank] = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            int key = PosterImageKey(bank, i); v3Assets[key] = null; v3AssetGenerations[key] = "";
+            v3ImageAttempts[key] = 0; v3ImageRetryAt[key] = 0;
+        }
+    }
+    private bool PosterManifest(DataDictionary d, int bank, string generation)
+    {
+        if (d == null || bank < 0 || bank >= 32 || Str(d,"schema") != "metarea-guide-posters-v1" ||
+            Integer(d,"layoutVersion",-1) != 1 || Str(d,"state") != "ready" ||
+            Integer(d,"bank",-1) != bank || Str(d,"generationId") != generation || !V3BankUsable(bank,generation)) return false;
+        double now = Number(d,"serverTime"), until = Number(d,"validUntil"), expiry = Number(d,"expiresAtUnix");
+        if (now <= 0 || until <= now || until-now > 300 || until <= V3Now() || now > V3Now()+120 || expiry < 0 || (expiry > 0 && expiry <= V3Now())) return false;
+        if (PosterGeneration(bank,generation) && posterManifests[bank] != null && now < Number(posterManifests[bank],"serverTime")) return false;
+        DataList sheets = V3List(d,"sheets"), ads = V3List(d,"ads");
+        if (sheets == null || sheets.Count > 4 || ads == null || ads.Count > 16) return false;
+        bool[] sheetSeen = new bool[4]; bool[] cellSeen = new bool[16];
+        for (int i=0;i<sheets.Count;i++)
+        {
+            if (sheets[i].TokenType != TokenType.DataDictionary) return false;
+            DataDictionary a=sheets[i].DataDictionary; int id=Integer(a,"sheetId",-1);
+            if(id<0 || id>3 || sheetSeen[id] || Str(a,"path") != "sheets/"+id+".png" || Str(a,"format") != "png" ||
+                Integer(a,"width",0)!=1440 || Integer(a,"height",0)!=2048 || !V3Hex(Str(a,"imageToken"))) return false;
+            DataDictionary m=V3Object(a,"marker");
+            if(m==null || Integer(m,"x",-1)!=0 || Integer(m,"y",-1)!=2032 || Integer(m,"width",0)!=1408 || Integer(m,"height",0)!=16) return false;
+            sheetSeen[id]=true;
+        }
+        for (int i=0;i<ads.Count;i++)
+        {
+            if(ads[i].TokenType!=TokenType.DataDictionary) return false;
+            DataDictionary ad=ads[i].DataDictionary; int sheet=Integer(ad,"sheetId",-1);
+            if(sheet<0 || sheet>3 || !sheetSeen[sheet] || string.IsNullOrEmpty(Str(ad,"adId")) || Str(ad,"adId").Length>128 || !PosterContentKey(Str(ad,"contentKey"))) return false;
+            DataDictionary r=V3Object(ad,"rect");
+            if(r==null || Integer(r,"width",0)!=712 || Integer(r,"height",0)!=1008) return false;
+            int x=Integer(r,"x",-1), y=Integer(r,"y",-1);
+            if((x!=4 && x!=724) || (y!=4 && y!=1020)) return false;
+            int cell=sheet*4+(x==4?0:1)+(y==4?0:2);
+            if(cellSeen[cell]) return false; cellSeen[cell]=true;
+            for(int j=0;j<i;j++) if(Str(ads[j].DataDictionary,"adId")==Str(ad,"adId")) return false;
+            string url=Str(ad,"externalUrl"), world=Str(ad,"portalWorldId");
+            if(url.Length>2048 || (url!="" && (!url.StartsWith("https://") || url.IndexOf('\n')>=0 || url.IndexOf('\r')>=0))) return false;
+            if(world!="" && !ValidWorldId(world)) return false;
+        }
+        PosterResetGeneration(bank,generation);
+        // Validate the entire transaction before replacing any accepted descriptor.
+        for(int i=0;i<sheets.Count;i++)
+        {
+            DataDictionary a=sheets[i].DataDictionary; int key=PosterImageKey(bank,Integer(a,"sheetId",-1));
+            if(v3Assets[key]==null || Str(v3Assets[key],"imageToken")!=Str(a,"imageToken")) {v3ImageAttempts[key]=0;v3ImageRetryAt[key]=0;}
+            v3Assets[key]=a;v3AssetGenerations[key]=generation;
+        }
+        posterManifests[bank]=d;posterStates[bank]=1;posterValidUntil[bank]=until;posterExpires[bank]=expiry;
+        V3AdvanceClock(now);
+        posterNextAttempt[bank]=Time.realtimeSinceStartup+(float)Mathf.Max(5f,(float)(until-V3Now()-15d));
+        return true;
+    }
+    private bool PosterStateResponse(DataDictionary d, int bank, string generation)
+    {
+        if(d==null || Str(d,"schema")!="metarea-guide-posters-state-v1" || Integer(d,"bank",-1)!=bank || Str(d,"generationId")!=generation) return false;
+        string state=Str(d,"state"), reason=Str(d,"reason");
+        if((state=="unsupported" && reason=="generation_has_no_posters") || (state=="disabled" && reason=="feature_disabled"))
+        {
+            PosterResetGeneration(bank,generation);posterStates[bank]=2;posterNextAttempt[bank]=float.MaxValue;return true;
+        }
+        if(state=="unavailable" && reason=="generation_expired")
+        {PosterResetGeneration(bank,generation);posterStates[bank]=4;posterNextAttempt[bank]=float.MaxValue;return true;}
+        return false;
+    }
+    private void PosterRequestFailed(bool terminal)
+    {
+        int bank=v3RequestBank;string generation=v3RequestGeneration;
+        V3AbandonStringRequest();v3RequestInFlight=false;
+        if(!terminal && v3RequestAttempts<4)
+        {v3RequestRetryAt=Time.realtimeSinceStartup+V3Backoff(v3RequestAttempts);return;}
+        if(bank>=0 && bank<32)
+        {PosterResetGeneration(bank,generation);if(posterStates[bank]!=2 && posterStates[bank]!=4)posterStates[bank]=3;posterNextAttempt[bank]=Time.realtimeSinceStartup+60f;}
+        v3RequestKind=0;v3RequestAttempts=0;v3Version++;
+    }
+    private void PosterStringError(int code, string response)
+    {
+        DataDictionary d=V3Json(response,300000);
+        bool state=PosterStateResponse(d,v3RequestBank,v3RequestGeneration);
+        // Only a generic old-server 404 is a negative capability result. A
+        // structured unavailable/mismatched generation is never unsupported.
+        if(!state && code==404 && (d==null || Str(d,"schema")!="metarea-guide-posters-state-v1"))
+        {PosterResetGeneration(v3RequestBank,v3RequestGeneration);posterStates[v3RequestBank]=2;posterNextAttempt[v3RequestBank]=float.MaxValue;state=true;}
+        if(state){v3RequestKind=0;v3RequestInFlight=false;v3RequestAttempts=0;v3Version++;return;}
+        PosterRequestFailed(false);
+    }
+    private bool PosterScheduleDisplay(MetaReaWallGuide display)
+    {
+        if(display==null || !display.ready || !display.gameObject.activeInHierarchy || display.view!=3 || !display.v4Protocol ||
+            display.openedAd<0 || display.openedAd>=display.adCount || !display.IsAdActive(display.openedAd)) return false;
+        int bank=display.v3BaseBank;string generation=display.v3BaseGeneration;
+        if(!V3BankUsable(bank,generation) || posterManifestUrls==null || posterManifestUrls.Length!=32) return false;
+        PosterResetGeneration(bank,generation);
+        if(posterStates[bank]==2 || posterStates[bank]==4 || Time.realtimeSinceStartup<posterNextAttempt[bank]) return false;
+        V3QueueRequest(8,posterManifestUrls[bank],bank,generation,-1,0);return v3RequestKind==8;
+    }
+    private bool PosterSchedule()
+    {
+        if(!v4Protocol || !ready) return false;
+        if(sharedDisplays!=null)for(int i=0;i<sharedDisplays.Length;i++)if(PosterScheduleDisplay(sharedDisplays[i]))return true;
+        return PosterScheduleDisplay(this);
+    }
+    private bool PosterWantDisplay(MetaReaWallGuide display)
+    {
+        int ad=display.openedAd;int bank=display.v3BaseBank;string generation=display.v3BaseGeneration;
+        if(!display.PosterDisplayAllowed(ad)) return false;
+        DataDictionary entry=PosterFresh(bank,generation)?PosterEntry(bank,generation,display.adIds[ad],display.adKeys[ad]):null;
+        if(entry!=null)
+        {
+            int sheet=Integer(entry,"sheetId",-1),key=PosterImageKey(bank,sheet);
+            if(V3WantImage(bank,generation,32+sheet))return true;
+            if(ImageCacheSlot(key)>=0 || v3ImageAttempts[key]<4) return false;
+        }
+        // Wait for the first capability check. On old-server/transport failure,
+        // fall back to the old detailed image; never request a QR for this page.
+        if(!PosterGeneration(bank,generation) || posterStates[bank]==0) return false;
+        return V3WantRef(display.v3DetailImages[ad],bank,generation);
+    }
+    private string PosterExternalUrl(int ad)
+    {
+        if(!onlineMode) return archiveUrl;
+        DataDictionary entry=CurrentPoster(ad);
+        if(entry!=null)return Str(entry,"externalUrl");
+        if(ad>=0 && ad<posterExternalUrls.Length && posterExternalKnown[ad])return posterExternalUrls[ad];
+        // No canonical value on legacy servers: preserve their existing URL.
+        return ad>=0 && ad<adCount?adUrls[ad]:"";
+    }
+    private string PosterStatus(int ad)
+    {
+        if(!onlineMode || !v4Protocol) return "";
+        MetaReaWallGuide source=PosterSource();int bank=v3BaseBank;
+        if(!PosterDisplayAllowed(ad))return "掲載情報を確認できません";
+        DataDictionary entry=CurrentPoster(ad);
+        if(entry!=null)
+        {
+            int key=PosterImageKey(bank,Integer(entry,"sheetId",-1));
+            if(source.ImageCacheSlot(key)>=0)return "";
+            return source.v3ImageAttempts[key]>=4?"画像を再取得予定":"ポスターを読み込んでいます…";
+        }
+        if(source.PosterGeneration(bank,v3BaseGeneration) && source.posterStates[bank]==2)return "";
+        if(source.PosterGeneration(bank,v3BaseGeneration) && source.posterStates[bank]==3)return "高画質ポスターを再取得予定";
+        return "ポスターを確認しています…";
+    }
+    private void RenderPoster()
+    {
+        if(posterOverlay==null)return;
+        posterOverlay.SetActive(view==3);
+        if(view!=3)return;
+        posterOverlay.GetComponent<Image>().color=backgroundColor;
+        adTitle.gameObject.SetActive(false);adDescription.gameObject.SetActive(false);adSponsor.gameObject.SetActive(false);
+        if(sponsorQrPicture!=null)sponsorQrPicture.gameObject.SetActive(false);
+        if(adQrStatus!=null)adQrStatus.gameObject.SetActive(false);
+        if(sponsorLinkHelp!=null)sponsorLinkHelp.gameObject.SetActive(false);
+        int ad=openedAd;bool allowed=!onlineMode || (IsAdActive(ad) && PosterDisplayAllowed(ad));
+        string url=allowed?PosterExternalUrl(ad):"";
+        bool hasUrl=!string.IsNullOrEmpty(url),hasWorld=allowed && (onlineMode?TopPortalAvailable():adWorld>=0);
+        // Keep a configured world button in place during a cooldown; availability
+        // is still checked again by the local portal action before spawning.
+        float height=hasUrl && hasWorld?980f:1030f,width=height*712f/1008f,left=(760f-width)*.5f;
+        float pictureWidth=width,pictureHeight=height;
+        DataDictionary entry=allowed && onlineMode?CurrentPoster(ad):null;
+        bool painted=false;
+        if(entry!=null)
+        {
+            int sheet=Integer(entry,"sheetId",-1);
+            Texture2D texture=V3Texture(v3BaseBank,v3BaseGeneration,32+sheet);
+            if(texture!=null){adPicture.texture=texture;adPicture.uvRect=V3Uv(entry,texture);adPicture.color=Color.white;painted=true;}
+        }
+        if(!allowed)SetPlaceholder(adPicture,1);
+        else if(!painted && onlineMode && guideV3 && ad>=0 && ad<adCount)
+        {
+            DataDictionary reference=v3DetailImages[ad];
+            if(V3Texture(v3BaseBank,v3BaseGeneration,reference==null?-1:Integer(reference,"assetId",-1))==null)reference=v4PreviewImages[ad];
+            V3Paint(adPicture,reference,v3BaseBank,v3BaseGeneration,false);
+            DataDictionary r=V3Object(reference,"rect");
+            if(r!=null){float aspect=(float)Integer(r,"width",1)/Mathf.Max(1,Integer(r,"height",1));pictureHeight=Mathf.Min(height,width/aspect);pictureWidth=pictureHeight*aspect;}
+        }
+        else if(!painted && adPicture.texture!=null)
+        {float aspect=(float)adPicture.texture.width/Mathf.Max(1,adPicture.texture.height);pictureHeight=Mathf.Min(height,width/aspect);pictureWidth=pictureHeight*aspect;}
+        Place(((RectTransform)((Component)adPicture).transform),(760-pictureWidth)*.5f,28+(height-pictureHeight)*.5f,pictureWidth,pictureHeight);
+        if(sponsorUrlField!=null)
+        {
+            sponsorUrlField.gameObject.SetActive(hasUrl);sponsorUrlField.text=url;
+            float urlWidth=hasWorld?width:width-172;
+            Place((RectTransform)sponsorUrlField.transform,left,hasWorld?1020:1070,urlWidth,46);
+            if(posterUrlText!=null)Place(((RectTransform)((Component)posterUrlText).transform),0,6,urlWidth-20,34);
+        }
+        adPortalButton.gameObject.SetActive(hasWorld);
+        Place((RectTransform)adPortalButton.transform,left,1070,width-172,46);
+        Place(((RectTransform)((Component)adPortalLabel).transform),0,0,width-172,46);adPortalLabel.fontSize=24;
+        int wait=Mathf.CeilToInt(PortalWait());adPortalLabel.text=wait>0?"あと "+wait+" 秒":"ポータルを出す";
+        adPortalButton.interactable=hasWorld && ready && wait==0;
+        Transform back=adPanel.transform.Find("Ad back");
+        if(back!=null){Place((RectTransform)back,left+width-160,1070,160,46);TMP_Text label=back.GetComponentInChildren<TMP_Text>();if(label!=null){Place(((RectTransform)((Component)label).transform),0,0,160,46);label.text="戻る";label.fontSize=24;}}
+        if(adDownloadStatus!=null){string status=allowed?PosterStatus(ad):"掲載情報を確認できません";adDownloadStatus.gameObject.SetActive(status!="");adDownloadStatus.text=status;Place(((RectTransform)((Component)adDownloadStatus).transform),90,0,670,24);}
+    }
+
+    private bool PosterContentKey(string value)
+    {
+        if(string.IsNullOrEmpty(value) || value.Length!=64)return false;
+        for(int i=0;i<value.Length;i++)if("0123456789abcdef".IndexOf(value[i])<0)return false;
+        return true;
     }
 
 }
-
-
-
-
