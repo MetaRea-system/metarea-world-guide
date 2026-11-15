@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -80,12 +81,26 @@ public static class MetaReaAssetsEntry
         if (!AssetDatabase.IsValidFolder(docs))
             AssetDatabase.CreateFolder(Folder, "UserContent");
     }
+    // VCC replaces package bytes outside AssetDatabase. Refresh the imported
+    // source once per content revision/session, including existing variants.
+    static void RefreshSource()
+    {
+        if (!File.Exists(SourcePath)) return;
+        string revision;
+        using (var hash = SHA256.Create())
+            revision = Convert.ToBase64String(hash.ComputeHash(File.ReadAllBytes(SourcePath)));
+        const string key = "MetaRea.WorldGuide.ImportedSourceRevision";
+        if (SessionState.GetString(key, "") == revision) return;
+        AssetDatabase.ImportAsset(SourcePath, ImportAssetOptions.ForceUpdate | ImportAssetOptions.ForceSynchronousImport);
+        SessionState.SetString(key, revision);
+    }
     public static bool EnsureEntry(bool revealCreated)
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode) return false;
         MetaReaTextResources.EnsureSettings();
         MigrateEntry();
         EnsureDocumentation();
+        RefreshSource();
         // Never overwrite a user's existing prefab, including its GUID/overrides.
         if (File.Exists(PrefabPath)) return false;
         var source = AssetDatabase.LoadAssetAtPath<GameObject>(SourcePath);

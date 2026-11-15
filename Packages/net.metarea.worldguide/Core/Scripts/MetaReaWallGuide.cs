@@ -5284,6 +5284,9 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         if(posterOverlay==null)return;
         posterOverlay.SetActive(view==3);
         if(view!=3)return;
+        // Existing scene instances can retain the pre-0.20.3 overlay dimensions.
+        // Keep the poster background above the footer even before reimport/save.
+        Place((RectTransform)posterOverlay.transform,0f,155f,800f,958f);
         posterOverlay.GetComponent<Image>().color=backgroundColor;
         adTitle.gameObject.SetActive(false);adDescription.gameObject.SetActive(false);adSponsor.gameObject.SetActive(false);
         if(sponsorQrPicture!=null)sponsorQrPicture.gameObject.SetActive(false);
