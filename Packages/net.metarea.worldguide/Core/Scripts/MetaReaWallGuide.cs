@@ -5399,15 +5399,17 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         bool error=!allowed || state.Contains("再取得") || (source.PosterGeneration(v3BaseBank,v3BaseGeneration) && (source.posterStates[v3BaseBank]==2 || source.posterStates[v3BaseBank]==4));
         if(error && posterNoticeFailed<0f)posterNoticeFailed=Time.realtimeSinceStartup;
         bool failedNotice=posterNoticeFailed>=0f;
-        bool center=failedNotice?Time.realtimeSinceStartup-posterNoticeFailed<3f:Time.realtimeSinceStartup-posterNoticeOpened<2f;
-        float w=center?440f:(failedNotice?200f:260f),h=center?88f:(failedNotice?40f:64f);
+        float w=failedNotice?760f-left-width-12f:260f,h=failedNotice?42f:64f;
+        float x=left+width-w-10f,y=failedNotice?10f:(height-h)*.5f;
         adDownloadStatus.richText=true;adDownloadStatus.alignment=TextAlignmentOptions.Center;
-        adDownloadStatus.color=Color.white;
-        adDownloadStatus.text=!allowed?"掲載情報を確認できません":failedNotice?
-            (center?"<size=26>プレビュー表示中</size>\n<size=18>高画質版を取得できませんでした</size>":"<size=18>低画質版表示中</size>"):
-            (center?"<size=26>プレビュー表示中</size>\n<size=20>高画質版を読み込んでいます…</size>":"<size=20>プレビュー表示中</size>\n<size=16>高画質版を読み込んでいます…</size>");
-        Place((RectTransform)((Component)adDownloadStatus).transform,center?(760f-w)*.5f:left+width-w-10f,(height-h)*.5f,w,h);
-        if(posterNoticeBackground!=null){Place((RectTransform)((Component)posterNoticeBackground).transform,center?(760f-w)*.5f:left+width-w-10f,(height-h)*.5f,w,h);((Component)posterNoticeBackground).transform.SetAsLastSibling();}
+        float pulse=.72f+.28f*Mathf.Cos((Time.realtimeSinceStartup-(failedNotice?posterNoticeFailed:posterNoticeOpened))*Mathf.PI*.5f);
+        adDownloadStatus.color=failedNotice?new Color(.72f,.77f,.80f,pulse):new Color(1f,1f,1f,pulse);
+        adDownloadStatus.text=!allowed?"<size=12>掲載情報\n確認不可</size>":failedNotice?
+            "<size=12>低画質で\n表示中</size>":
+            "<size=20>プレビュー表示中</size>\n<size=16>高画質版を読み込んでいます…</size>";
+        if(posterNoticeBackground!=null)posterNoticeBackground.gameObject.SetActive(!failedNotice);
+        Place((RectTransform)((Component)adDownloadStatus).transform,x,y,w,h);
+        if(posterNoticeBackground!=null){Place((RectTransform)((Component)posterNoticeBackground).transform,x,y,w,h);((Component)posterNoticeBackground).transform.SetAsLastSibling();}
         ((Component)adDownloadStatus).transform.SetAsLastSibling();
     }
     private bool PosterContentKey(string value)
