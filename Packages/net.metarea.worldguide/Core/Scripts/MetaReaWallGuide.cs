@@ -5280,7 +5280,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         bool hasUrl=!string.IsNullOrEmpty(url),hasWorld=allowed && (onlineMode?TopPortalAvailable():adWorld>=0);
         // Keep a configured world button in place during a cooldown; availability
         // is still checked again by the local portal action before spawning.
-        float height=hasUrl && hasWorld?980f:1030f,width=height*712f/1008f,left=(760f-width)*.5f;
+        float height=hasUrl && hasWorld?810f:860f,width=height*712f/1008f,left=(760f-width)*.5f;
         float pictureWidth=width,pictureHeight=height;
         DataDictionary entry=allowed && onlineMode?CurrentPoster(ad):null;
         bool painted=false;
@@ -5306,16 +5306,16 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             sponsorUrlField.gameObject.SetActive(hasUrl);sponsorUrlField.text=url;
             float urlWidth=hasWorld?width:width-172;
-            Place((RectTransform)sponsorUrlField.transform,left,hasWorld?1020:1070,urlWidth,46);
+            Place((RectTransform)sponsorUrlField.transform,left,hasWorld?850:900,urlWidth,46);
             if(posterUrlText!=null)Place(((RectTransform)((Component)posterUrlText).transform),0,6,urlWidth-20,34);
         }
         adPortalButton.gameObject.SetActive(hasWorld);
-        Place((RectTransform)adPortalButton.transform,left,1070,width-172,46);
+        Place((RectTransform)adPortalButton.transform,left,900,width-172,46);
         Place(((RectTransform)((Component)adPortalLabel).transform),0,0,width-172,46);adPortalLabel.fontSize=24;
         int wait=Mathf.CeilToInt(PortalWait());adPortalLabel.text=wait>0?"あと "+wait+" 秒":"ポータルを出す";
         adPortalButton.interactable=hasWorld && ready && wait==0;
         Transform back=adPanel.transform.Find("Ad back");
-        if(back!=null){Place((RectTransform)back,left+width-160,1070,160,46);TMP_Text label=back.GetComponentInChildren<TMP_Text>();if(label!=null){Place(((RectTransform)((Component)label).transform),0,0,160,46);label.text="戻る";label.fontSize=24;}}
+        if(back!=null){Place((RectTransform)back,left+width-160,900,160,46);TMP_Text label=back.GetComponentInChildren<TMP_Text>();if(label!=null){Place(((RectTransform)((Component)label).transform),0,0,160,46);label.text="戻る";label.fontSize=24;}}
         if(adDownloadStatus!=null){string status=allowed?PosterStatus(ad):"掲載情報を確認できません";adDownloadStatus.gameObject.SetActive(status!="");adDownloadStatus.text=status;Place(((RectTransform)((Component)adDownloadStatus).transform),90,0,670,24);}
     }
 

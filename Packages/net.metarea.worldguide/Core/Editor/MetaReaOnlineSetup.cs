@@ -50,7 +50,7 @@ public static class MetaReaOnlineSetup
         return cachedPortalClickUrls;
     }
     public const string FeedEndpoint = "https://metarea.net/api/udon/guide-v3/current.json";
-    public const string GuideVersion = "0.20.0";
+    public const string GuideVersion = "0.20.1";
     public static string FeedUrl => VersionedFeedUrl(FeedEndpoint);
 
     // Only the official feed receives a package version. No player, device,

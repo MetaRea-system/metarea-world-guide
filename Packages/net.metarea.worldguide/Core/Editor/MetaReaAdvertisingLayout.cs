@@ -29,13 +29,13 @@ public static class MetaReaAdvertisingLayout
         guide.initialLoadingLabel.text = "<size=28>TOPを読み込んでいます…</size>\n\n" + MetaReaWallGuide.InitialLoadingGuidance;
         guide.initialLoadingPanel.SetActive(false);
         guide.adDownloadStatus.gameObject.SetActive(false); guide.adQrStatus.gameObject.SetActive(false);
-        var overlay=Rect(canvas.transform,"Poster detail overlay",0,155,800,1140);
+        var overlay=Rect(canvas.transform,"Poster detail overlay",0,155,800,958);
         var fill=overlay.GetComponent<Image>();if(fill==null)fill=overlay.gameObject.AddComponent<Image>();
         fill.color=guide.backgroundColor;fill.raycastTarget=true;
         overlay.SetAsLastSibling();guide.posterOverlay=overlay.gameObject;
         var detail=(RectTransform)guide.adPanel.transform;detail.SetParent(overlay,false);
         detail.anchorMin=detail.anchorMax=detail.pivot=new Vector2(0,1);
-        detail.anchoredPosition=new Vector2(20,0);detail.sizeDelta=new Vector2(760,1120);
+        detail.anchoredPosition=new Vector2(20,0);detail.sizeDelta=new Vector2(760,950);
         var disclosure=detail.Find("Disclosure") as RectTransform;
         if(disclosure!=null){disclosure.anchorMin=disclosure.anchorMax=disclosure.pivot=new Vector2(0,1);disclosure.anchoredPosition=Vector2.zero;disclosure.sizeDelta=new Vector2(80,24);}
         guide.sponsorUrlField.lineType=TMP_InputField.LineType.SingleLine;
