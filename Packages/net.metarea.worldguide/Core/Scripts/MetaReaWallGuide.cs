@@ -5280,7 +5280,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         bool hasUrl=!string.IsNullOrEmpty(url),hasWorld=allowed && (onlineMode?TopPortalAvailable():adWorld>=0);
         // Keep a configured world button in place during a cooldown; availability
         // is still checked again by the local portal action before spawning.
-        float height=hasUrl && hasWorld?810f:860f,width=height*712f/1008f,left=(760f-width)*.5f;
+        float height=hasUrl && hasWorld?838f:888f,width=height*712f/1008f,left=(760f-width)*.5f;
         float pictureWidth=width,pictureHeight=height;
         DataDictionary entry=allowed && onlineMode?CurrentPoster(ad):null;
         bool painted=false;
@@ -5301,7 +5301,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         }
         else if(!painted && adPicture.texture!=null)
         {float aspect=(float)adPicture.texture.width/Mathf.Max(1,adPicture.texture.height);pictureHeight=Mathf.Min(height,width/aspect);pictureWidth=pictureHeight*aspect;}
-        Place(((RectTransform)((Component)adPicture).transform),(760-pictureWidth)*.5f,28+(height-pictureHeight)*.5f,pictureWidth,pictureHeight);
+        Place(((RectTransform)((Component)adPicture).transform),(760-pictureWidth)*.5f,(height-pictureHeight)*.5f,pictureWidth,pictureHeight);
         if(sponsorUrlField!=null)
         {
             sponsorUrlField.gameObject.SetActive(hasUrl);sponsorUrlField.text=url;
