@@ -15,10 +15,11 @@ public static class MetaReaCompactLayout
         cr.sizeDelta = new Vector2(800, Height);
         var collider = canvas.GetComponent<BoxCollider>();
         if (collider != null) { collider.size = new Vector3(800, Height, 8); collider.center = new Vector3(0, Height / 2, 0); }
+        float boardOffset = canvas.transform.localPosition.y - .15f;
         var frame = g.transform.Find("Thin frame");
-        if (frame != null) { frame.localPosition = new Vector3(0, .774f - 55f * .000925f / 2, .015f); frame.localScale = new Vector3(.777f, 1.286f - 55f * .000925f, .035f); }
+        if (frame != null) { frame.localPosition = new Vector3(0, boardOffset + .774f - 55f * .000925f / 2, .015f); frame.localScale = new Vector3(.777f, 1.286f - 55f * .000925f, .035f); }
         var trim = g.transform.Find("Top cyan trim");
-        if (trim != null) trim.localPosition = new Vector3(0, 1.416f - 55f * .000925f, -.008f);
+        if (trim != null) trim.localPosition = new Vector3(0, boardOffset + 1.416f - 55f * .000925f, -.008f);
         Place(g.topPanel.transform.parent, 20, 267, 760, 840);
         foreach (var panel in new[] { g.topPanel, g.listPanel, g.detailPanel, g.adPanel, g.favoritesPanel })
             if (panel != null) Place(panel.transform, 0, 0, 760, ContentHeight);

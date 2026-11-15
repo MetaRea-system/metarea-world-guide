@@ -33,10 +33,11 @@ public static class MetaReaUnifiedLayout
         canvasRect.sizeDelta = new Vector2(800, 1350 + ExtraHeight);
         var collider = canvas.GetComponent<BoxCollider>();
         if (collider != null) { collider.size = new Vector3(800, 1350 + ExtraHeight, 8); collider.center = new Vector3(0, (1350 + ExtraHeight) / 2, 0); }
+        float boardOffset = canvas.transform.localPosition.y - .15f;
         var frame = g.transform.Find("Thin frame");
-        if (frame != null) { frame.localPosition = new Vector3(0, .774f + ExtraHeight * .000925f / 2, .015f); frame.localScale = new Vector3(.777f, 1.286f + ExtraHeight * .000925f, .035f); }
+        if (frame != null) { frame.localPosition = new Vector3(0, boardOffset + .774f + ExtraHeight * .000925f / 2, .015f); frame.localScale = new Vector3(.777f, 1.286f + ExtraHeight * .000925f, .035f); }
         var trim = g.transform.Find("Top cyan trim");
-        if (trim != null) trim.localPosition = new Vector3(0, 1.416f + ExtraHeight * .000925f, -.008f);
+        if (trim != null) trim.localPosition = new Vector3(0, boardOffset + 1.416f + ExtraHeight * .000925f, -.008f);
         Place((RectTransform)g.topPanel.transform.parent, 20, 267 + ExtraHeight, 760, 858);
         Place((RectTransform)g.sponsorBannerButton.transform, 20, 1190 + ExtraHeight, 760, 760f/6f);
         if (g.sponsorDisclosure != null) Place((RectTransform)g.sponsorDisclosure.transform, 20, 1158 + ExtraHeight, 760, 30);

@@ -15,6 +15,8 @@ public static class MetaReaFavoritesLayout
         if (!g.favoritesEnabled) return;
         var standard = AssetDatabase.LoadAssetAtPath<GameObject>(MetaReaAssetsEntry.SourcePath);
         if (standard == null) throw new InvalidOperationException("The standard MetaRea prefab is missing.");
+        var boardCanvas = g.topPanel.GetComponentInParent<Canvas>().transform;
+        Vector3 boardPosition = boardCanvas.localPosition;
         // Rebuild from the standard coordinates so repeated updates do not accumulate scaling.
         foreach (var rect in g.GetComponentsInChildren<RectTransform>(true))
         {
@@ -25,6 +27,7 @@ public static class MetaReaFavoritesLayout
             rect.anchoredPosition = new Vector2(source.anchoredPosition.x, source.anchoredPosition.y);
             rect.sizeDelta = new Vector2(source.sizeDelta.x, source.sizeDelta.y);
         }
+        boardCanvas.localPosition = boardPosition;
         foreach (string name in new[] { "Thin frame", "Top cyan trim", "Bottom cyan trim" })
         {
             var source = standard.transform.Find(name); var target = g.transform.Find(name);

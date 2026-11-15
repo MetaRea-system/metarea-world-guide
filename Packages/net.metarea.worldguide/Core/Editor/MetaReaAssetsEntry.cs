@@ -16,7 +16,56 @@ public static class MetaReaAssetsEntry
     public const string SourcePath = "Packages/net.metarea.worldguide/Core/Internal/MetaRea World GUIDE.prefab";
     static bool queued;
 
-    static MetaReaAssetsEntry() { Schedule(); }
+    static MetaReaAssetsEntry()
+    {
+        Schedule();
+        ObjectChangeEvents.changesPublished += NewObjectsCreated;
+    }
+
+    // Only undoable new scene objects (e.g. dragging a prefab) are initialized.
+    // Scene loading, package updates, moving existing boards and builds do not
+    // run placement. No terrain lookup or runtime component is involved.
+    static void NewObjectsCreated(ref ObjectChangeEventStream stream)
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode || BuildPipeline.isBuildingPlayer) return;
+        for (int i = 0; i < stream.length; i++)
+        {
+            if (stream.GetEventType(i) != ObjectChangeKind.CreateGameObjectHierarchy) continue;
+            stream.GetCreateGameObjectHierarchyEvent(i, out var created);
+            var root = EditorUtility.InstanceIDToObject(created.instanceId) as GameObject;
+            if (root == null) continue;
+            foreach (var guide in root.GetComponentsInChildren<MetaReaWallGuide>(true))
+                InitializePlacement(guide);
+        }
+    }
+
+    static void InitializePlacement(MetaReaWallGuide guide)
+    {
+        if (guide == null || guide.isSharedDataSource || EditorUtility.IsPersistent(guide)) return;
+        var scene = guide.gameObject.scene;
+        if (!scene.IsValid() || !scene.isLoaded || EditorSceneManager.IsPreviewScene(scene) ||
+            PrefabStageUtility.GetPrefabStage(guide.gameObject) != null) return;
+        if (!PrefabUtility.IsPartOfPrefabInstance(guide)) return;
+        var original = PrefabUtility.GetCorrespondingObjectFromOriginalSource(guide.gameObject);
+        if (original == null || AssetDatabase.GetAssetPath(original) != SourcePath) return;
+        var frame = guide.transform.Find("Thin frame");
+        var canvas = guide.transform.Find("Wall newspaper");
+        if (frame == null || canvas == null) return;
+        // Preserve deliberate placement overrides in custom variants/copies.
+        var sourceFrame = original.transform.Find("Thin frame");
+        if (sourceFrame == null || (frame.localPosition-sourceFrame.localPosition).sqrMagnitude > .000001f) return;
+        float bottom = frame.localPosition.y - frame.localScale.y * .5f;
+        float lift = .5f - bottom;
+        if (Mathf.Abs(lift) < .00001f) return;
+        foreach (string name in new[] { "Thin frame", "Top cyan trim", "Bottom cyan trim", "Wall newspaper" })
+        {
+            var part = guide.transform.Find(name);
+            if (part == null) continue;
+            Undo.RecordObject(part, "Place MetaRea board 0.5m above origin");
+            part.localPosition += Vector3.up * lift;
+            PrefabUtility.RecordPrefabInstancePropertyModifications(part);
+        }
+    }
 
     static void Schedule()
     {
