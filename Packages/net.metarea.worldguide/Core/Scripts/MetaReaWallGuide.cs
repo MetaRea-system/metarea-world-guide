@@ -688,6 +688,15 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     private float sponsorStatusStarted;
     private float nextSponsorStatusAttempt;
     private int currentAd = -1;
+    public Image posterNoticeBackground;
+    public Image posterFrameBackground;
+    private string heldBannerId = "", heldBannerKey = "";
+    private float heldBannerUntil;
+    private bool heldBannerOpen;
+    private int posterNoticeAd = -1;
+    private float posterNoticeOpened, posterNoticeFailed = -1f;
+
+
     private int openedAd = -1;
     private int[] adOrder;
     private int adCursor;
@@ -1708,7 +1717,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
 
     private void SetSponsorFade(float alpha, bool interactive)
     {
-        if (sponsorBannerFade != null) { sponsorBannerFade.alpha = alpha; sponsorBannerFade.interactable = interactive; sponsorBannerFade.blocksRaycasts = interactive; }
+        if (sponsorBannerFade != null) { bool hold=BannerHeld(); sponsorBannerFade.alpha = hold?1f:alpha; sponsorBannerFade.interactable = hold||interactive; sponsorBannerFade.blocksRaycasts = hold||interactive; }
         if (sponsorWorldFades != null) for (int i = 0; i < sponsorWorldFades.Length; i++)
         {
             if (sponsorWorldFades[i] == null) continue;
@@ -1756,7 +1765,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         {
             if (!IsTopActive(world)) return;
             if (topTypes[world] == 0) { if (RequestPortal(topWorlds[world])) QueueAdPortal(topIds[world], topKeys[world], topClickSlots[world]); return; }
-            CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render();
+            CancelSponsorFade(); beforeAdView = 0; openedTop = world; openedAd = topAds[world]; view = 3; posterNoticeAd=-1; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render();
             if (view == 3 && adPanel.activeSelf) QueueAdClick(topIds[world], topKeys[world], topClickSlots[world], 0);
             return;
         }
@@ -2457,8 +2466,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
     public void _Row3() { Open(rowMap[3]); }
     private void Open(int i) { if (!ready || !CanUseWorld(i) || sponsorOnly[i]) return; selected = i; sponsoredDetail = false; view = 2; Render(); }
     public void _Back() { view = tab == 0 ? 0 : 1; TryCommitDraw(); Render(); }
-    public void _Ad() { if (onlineMode && !IsAdActive(currentAd)) return; CancelSponsorFade(); if (view != 3) beforeAdView = view; openedTop = -1; openedAd = currentAd; view = 3; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render(); if (onlineMode && view == 3 && adPanel.activeSelf) QueueAdClick(adIds[openedAd], adKeys[openedAd], adClickSlots[openedAd], 1); }
-    public void _AdBack() { view = beforeAdView == 3 ? 0 : beforeAdView; nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds); Render(); }
+    public void _Ad() { int banner = VisibleBanner(); if (onlineMode && !IsAdActive(banner)) return; heldBannerId=onlineMode?adIds[banner]:""; heldBannerKey=onlineMode?adKeys[banner]:""; heldBannerOpen=true; CancelSponsorFade(); if (view != 3) beforeAdView = view; openedTop = -1; openedAd = banner; view = 3; posterNoticeAd=-1; openedDetailRequestedAt = Time.realtimeSinceStartup; PumpImageDownloads(); Render(); if (onlineMode && view == 3 && adPanel.activeSelf) QueueAdClick(adIds[openedAd], adKeys[openedAd], adClickSlots[openedAd], 1); }
+    public void _AdBack() { heldBannerOpen=false; heldBannerUntil=Time.time+Mathf.Max(5f,sponsorRotationSeconds); view = beforeAdView == 3 ? 0 : beforeAdView; nextSponsorRotation = Time.time + Mathf.Max(5f, sponsorRotationSeconds); Render(); }
     private int Position()
     { for (int i = 0; i < orderCount; i++) if (order[i] == selected) return i; return -1; }
     public void _PreviousWorld()
@@ -3147,7 +3156,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
                 }
             }
         }
-        if (sponsorBannerButton != null) { sponsorBannerButton.gameObject.SetActive(!onlineMode || activeAdCount > 0); sponsorBannerButton.interactable = !onlineMode || IsAdActive(currentAd); }
+        int visibleBanner=VisibleBanner();
+        if (sponsorBannerButton != null) { sponsorBannerButton.gameObject.SetActive(!onlineMode || activeAdCount > 0); sponsorBannerButton.interactable = !onlineMode || IsAdActive(visibleBanner); }
         if (sponsorDisclosure != null) sponsorDisclosure.SetActive(!onlineMode || activeAdCount > 0);
         if (sponsorLinkHelp != null) sponsorLinkHelp.gameObject.SetActive(activeAdCount > 0 || (view == 3 && IsAdActive(openedAd)));
         if ((activeAdCount == 0 || !IsAdActive(currentAd)) && !(view == 3 && IsAdActive(openedAd)))
@@ -3158,7 +3168,7 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             return;
         }
         int a = view == 3 && IsAdActive(openedAd) ? openedAd : currentAd;
-        if (currentAd >= 0) { bannerTitle.text = adNames[currentAd]; SponsorBanner(bannerPicture, currentAd); }
+        if (visibleBanner >= 0) { bannerTitle.text = adNames[visibleBanner]; SponsorBanner(bannerPicture, visibleBanner); }
         adTitle.text = adNames[a]; adDescription.text = adDescriptions[a]; adSponsor.text = "広告主: " + adSponsors[a];
         SponsorDetail(a);
         bool premium = view == 3 && TopPortalAvailable();
@@ -5053,7 +5063,11 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             adQrStatus.gameObject.SetActive(detail && !V4Loaded(v3QrImages[openedAd]));
             adQrStatus.text = detail ? V4DownloadLabel(v3QrImages[openedAd],"QR").Replace("DL","読込") : "";
         }
-        if (v4Layout && currentAd < 0 && activeAdCount > 0) SetPlaceholder(bannerPicture,0);
+        if (v4Layout && VisibleBanner() < 0 && activeAdCount > 0) SetPlaceholder(bannerPicture,0);
+        if(ready && bannerPicture!=null && onlineMode) {
+            int banner=VisibleBanner();
+            if(banner>=0){SponsorBanner(bannerPicture,banner); if(sponsorBannerFade!=null && (view==3 || BannerHeld())){sponsorBannerFade.alpha=1f;sponsorBannerFade.interactable=true;sponsorBannerFade.blocksRaycasts=true;}}
+        }
         RenderPoster();
     }
 
@@ -5281,7 +5295,8 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         // Keep a configured world button in place during a cooldown; availability
         // is still checked again by the local portal action before spawning.
         float height=hasUrl && hasWorld?838f:888f,width=height*712f/1008f,left=(760f-width)*.5f;
-        float pictureWidth=width,pictureHeight=height;
+        float pictureWidth=width,pictureHeight=height,pictureX=-1f,pictureY=0f;
+        bool geometry=false;
         DataDictionary entry=allowed && onlineMode?CurrentPoster(ad):null;
         bool painted=false;
         if(entry!=null)
@@ -5298,10 +5313,22 @@ public class MetaReaWallGuide : UdonSharpBehaviour
             V3Paint(adPicture,reference,v3BaseBank,v3BaseGeneration,false);
             DataDictionary r=V3Object(reference,"rect");
             if(r!=null){float aspect=(float)Integer(r,"width",1)/Mathf.Max(1,Integer(r,"height",1));pictureHeight=Mathf.Min(height,width/aspect);pictureWidth=pictureHeight*aspect;}
+            Texture2D previewTexture=V3Texture(v3BaseBank,v3BaseGeneration,reference==null?-1:Integer(reference,"assetId",-1));
+            if(previewTexture!=null && PosterGeometryValid(reference,previewTexture))
+            {
+                DataDictionary content=V3Object(reference,"contentRect"),position=V3Object(reference,"posterContentRect");
+                adPicture.uvRect=PosterRectUv(content,previewTexture);
+                pictureX=left+width*Integer(position,"x",0)/712f;
+                pictureY=height*Integer(position,"y",0)/1008f;
+                pictureWidth=width*Integer(position,"width",0)/712f;
+                pictureHeight=height*Integer(position,"height",0)/1008f;
+                geometry=true;
+            }
         }
         else if(!painted && adPicture.texture!=null)
         {float aspect=(float)adPicture.texture.width/Mathf.Max(1,adPicture.texture.height);pictureHeight=Mathf.Min(height,width/aspect);pictureWidth=pictureHeight*aspect;}
-        Place(((RectTransform)((Component)adPicture).transform),(760-pictureWidth)*.5f,(height-pictureHeight)*.5f,pictureWidth,pictureHeight);
+        Place(((RectTransform)((Component)adPicture).transform),geometry?pictureX:(760-pictureWidth)*.5f,geometry?pictureY:(height-pictureHeight)*.5f,pictureWidth,pictureHeight);
+        if(posterFrameBackground!=null){posterFrameBackground.gameObject.SetActive(geometry);Place((RectTransform)((Component)posterFrameBackground).transform,left,0,width,height);}
         if(sponsorUrlField!=null)
         {
             sponsorUrlField.gameObject.SetActive(hasUrl);sponsorUrlField.text=url;
@@ -5316,9 +5343,70 @@ public class MetaReaWallGuide : UdonSharpBehaviour
         adPortalButton.interactable=hasWorld && ready && wait==0;
         Transform back=adPanel.transform.Find("Ad back");
         if(back!=null){Place((RectTransform)back,left+width-160,900,160,46);TMP_Text label=back.GetComponentInChildren<TMP_Text>();if(label!=null){Place(((RectTransform)((Component)label).transform),0,0,160,46);label.text="戻る";label.fontSize=24;}}
-        if(adDownloadStatus!=null){string status=allowed?PosterStatus(ad):"掲載情報を確認できません";adDownloadStatus.gameObject.SetActive(status!="");adDownloadStatus.text=status;Place(((RectTransform)((Component)adDownloadStatus).transform),90,0,670,24);}
+        PosterNotice(ad,allowed,painted,left,width,height);
     }
 
+
+    // Patch 077 geometry is optional. Unknown, partial or malformed metadata
+    // never changes the legacy rectangle or authorizes a different generation.
+    private bool PosterGeometryValid(DataDictionary reference,Texture texture)
+    {
+        if(reference==null || texture==null || Integer(reference,"imageGeometryVersion",-1)!=1)return false;
+        DataDictionary cell=V3Object(reference,"rect"),content=V3Object(reference,"contentRect"),
+            source=V3Object(reference,"sourceSize"),position=V3Object(reference,"posterContentRect");
+        if(cell==null || content==null || source==null || position==null)return false;
+        int sw=Integer(source,"width",0),sh=Integer(source,"height",0);
+        if(sw<1 || sh<1 || (double)sw*sh>40000000d)return false;
+        int cx=Integer(cell,"x",-1),cy=Integer(cell,"y",-1),cw=Integer(cell,"width",0),ch=Integer(cell,"height",0);
+        int x=Integer(content,"x",-1),y=Integer(content,"y",-1),w=Integer(content,"width",0),h=Integer(content,"height",0);
+        if(cx<0 || cy<0 || cw<1 || ch<1 || cx+cw>texture.width || cy+ch>texture.height ||
+            x<cx || y<cy || w<1 || h<1 || x+w>cx+cw || y+h>cy+ch)return false;
+        int px=Integer(position,"x",-1),py=Integer(position,"y",-1),pw=Integer(position,"width",0),ph=Integer(position,"height",0);
+        return px>=0 && py>=0 && pw>0 && ph>0 && px+pw<=712 && py+ph<=1008;
+    }
+    private Rect PosterRectUv(DataDictionary rect,Texture texture)
+    {
+        float x=Integer(rect,"x",0),y=Integer(rect,"y",0),w=Integer(rect,"width",1),h=Integer(rect,"height",1);
+        return new Rect((x+.5f)/texture.width,(texture.height-y-h+.5f)/texture.height,
+            Mathf.Max(0f,w-1f)/texture.width,Mathf.Max(0f,h-1f)/texture.height);
+    }
+
+    private bool BannerHeld()
+    {
+        if(heldBannerId=="" || (!heldBannerOpen && Time.time>=heldBannerUntil))return false;
+        if(heldBannerOpen && view!=3){heldBannerOpen=false;heldBannerUntil=Time.time+Mathf.Max(5f,sponsorRotationSeconds);}
+        for(int i=0;i<adCount;i++)if(adIds[i]==heldBannerId && adKeys[i]==heldBannerKey && IsAdActive(i) && adShowInBanner[i])return true;
+        heldBannerId="";heldBannerOpen=false;return false;
+    }
+    private int VisibleBanner()
+    {
+        if(BannerHeld())for(int i=0;i<adCount;i++)if(adIds[i]==heldBannerId && adKeys[i]==heldBannerKey)return i;
+        return currentAd;
+    }
+    private void PosterNotice(int ad,bool allowed,bool painted,float left,float width,float height)
+    {
+        if(adDownloadStatus==null)return;
+        if(posterNoticeAd!=ad){posterNoticeAd=ad;posterNoticeOpened=Time.realtimeSinceStartup;posterNoticeFailed=-1f;}
+        string state=allowed?PosterStatus(ad):"掲載情報を確認できません";
+        bool visible=onlineMode && v4Protocol && !painted;
+        adDownloadStatus.gameObject.SetActive(visible);
+        if(posterNoticeBackground!=null)posterNoticeBackground.gameObject.SetActive(visible);
+        if(!visible){posterNoticeFailed=-1f;return;}
+        MetaReaWallGuide source=PosterSource();
+        bool error=!allowed || state.Contains("再取得") || (source.PosterGeneration(v3BaseBank,v3BaseGeneration) && (source.posterStates[v3BaseBank]==2 || source.posterStates[v3BaseBank]==4));
+        if(error && posterNoticeFailed<0f)posterNoticeFailed=Time.realtimeSinceStartup;
+        bool failedNotice=posterNoticeFailed>=0f;
+        bool center=failedNotice?Time.realtimeSinceStartup-posterNoticeFailed<3f:Time.realtimeSinceStartup-posterNoticeOpened<2f;
+        float w=center?440f:(failedNotice?200f:260f),h=center?88f:(failedNotice?40f:64f);
+        adDownloadStatus.richText=true;adDownloadStatus.alignment=TextAlignmentOptions.Center;
+        adDownloadStatus.color=Color.white;
+        adDownloadStatus.text=!allowed?"掲載情報を確認できません":failedNotice?
+            (center?"<size=26>プレビュー表示中</size>\n<size=18>高画質版を取得できませんでした</size>":"<size=18>低画質版表示中</size>"):
+            (center?"<size=26>プレビュー表示中</size>\n<size=20>高画質版を読み込んでいます…</size>":"<size=20>プレビュー表示中</size>\n<size=16>高画質版を読み込んでいます…</size>");
+        Place((RectTransform)((Component)adDownloadStatus).transform,center?(760f-w)*.5f:left+width-w-10f,(height-h)*.5f,w,h);
+        if(posterNoticeBackground!=null){Place((RectTransform)((Component)posterNoticeBackground).transform,center?(760f-w)*.5f:left+width-w-10f,(height-h)*.5f,w,h);((Component)posterNoticeBackground).transform.SetAsLastSibling();}
+        ((Component)adDownloadStatus).transform.SetAsLastSibling();
+    }
     private bool PosterContentKey(string value)
     {
         if(string.IsNullOrEmpty(value) || value.Length!=64)return false;

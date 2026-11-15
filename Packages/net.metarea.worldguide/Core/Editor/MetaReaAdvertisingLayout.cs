@@ -47,7 +47,17 @@ public static class MetaReaAdvertisingLayout
         guide.sponsorUrlField.textComponent.transform.SetParent(viewport,false);guide.sponsorUrlField.textViewport=viewport;
         guide.sponsorUrlField.textComponent.enableWordWrapping=false;
         guide.sponsorUrlField.textComponent.richText=false;
-        guide.adDownloadStatus.alignment=TextAlignmentOptions.Right;
+        var frameRect=Rect(detail,"Poster frame background",0,0,760,838);
+        var frame=frameRect.GetComponent<Image>();if(frame==null)frame=frameRect.gameObject.AddComponent<Image>();
+        frame.color=new Color(11f/255f,21f/255f,38f/255f,1f);frame.raycastTarget=false;
+        int pictureIndex=guide.adPicture.transform.GetSiblingIndex(); if(frameRect.GetSiblingIndex()<pictureIndex)pictureIndex--; frameRect.SetSiblingIndex(pictureIndex);
+        guide.posterFrameBackground=frame;frame.gameObject.SetActive(false);
+        guide.adDownloadStatus.alignment=TextAlignmentOptions.Center;
+        var noticeRect=Rect(detail,"Poster loading background",160,380,440,88);
+        var noticeBackground=noticeRect.GetComponent<Image>();
+        if(noticeBackground==null)noticeBackground=noticeRect.gameObject.AddComponent<Image>();
+        noticeBackground.color=new Color(.015f,.04f,.065f,.9f);noticeBackground.raycastTarget=false;
+        guide.posterNoticeBackground=noticeBackground;noticeBackground.gameObject.SetActive(false);
         guide.adTitle.gameObject.SetActive(false);guide.adDescription.gameObject.SetActive(false);
         guide.adSponsor.gameObject.SetActive(false);guide.sponsorQrPicture.gameObject.SetActive(false);
         guide.sponsorLinkHelp.gameObject.SetActive(false);guide.posterOverlay.SetActive(false);
